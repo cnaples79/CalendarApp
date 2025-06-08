@@ -1,0 +1,88 @@
+plugins {
+    id 'application'
+    id 'org.beryx.jlink' version '2.23.0' // For creating a distributable app
+    id 'org.openjfx.javafxplugin' version '0.0.13'
+    id 'groovy'
+}
+
+repositories {
+    mavenCentral()
+}
+
+def groovyVersion = '3.0.10'
+def javafxVersion = '17.0.10' // Upgraded for mac-aarch64 support
+
+dependencies {
+    implementation "org.codehaus.groovy:groovy-all:${groovyVersion}"
+
+    // JavaFX dependencies
+    implementation "org.openjfx:javafx-controls:${javafxVersion}"
+    implementation "org.openjfx:javafx-fxml:${javafxVersion}"
+    implementation "org.openjfx:javafx-graphics:${javafxVersion}"
+    implementation "org.openjfx:javafx-swing:${javafxVersion}" // For potential Swing interop or GroovyFX
+
+    // HTTP Client (for AI service calls - using Apache HttpClient via Groovy's HttpBuilder NG)
+    implementation 'org.apache.httpcomponents.client5:httpclient5:5.1.4' // Downgraded for Java 11 compatibility
+    implementation "org.codehaus.groovy:groovy-json:${groovyVersion}"
+
+    // Testing
+    testImplementation 'org.spockframework:spock-core:2.3-groovy-4.0'
+    testImplementation 'junit:junit:4.13.2'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(11)
+    }
+}
+
+application {
+    mainClass = 'com.aicalendar.App'
+}
+
+javafx {
+    version = javafxVersion
+    modules = [ 'javafx.controls', 'javafx.fxml', 'javafx.graphics' ]
+}
+
+// Ensure Groovy files are compiled
+compileGroovy {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+// Ensure Java files (if any) are compiled with Java 11 compatibility
+compileJava {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+
+
+
+
+
+
+jlink {
+    options = ['--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages']
+    launcher {
+        name = 'ai-calendar'
+    }
+    // mainModule = 'com.aicalendar' // This line was causing an issue, jlink should infer or use mainClassName
+}
+
+// Task to create directories
+task createDirs {
+    doLast {
+        def baseDirs = [
+            "src/main/groovy/com/aicalendar",
+            "src/main/resources/com/aicalendar/ui",
+            "src/main/resources/images", // For any icons or images
+            "src/test/groovy/com/aicalendar"
+        ]
+        baseDirs.each { dirPath ->
+            file(dirPath).mkdirs()
+            println "Created directory: ${file(dirPath).absolutePath}"
+        }
+    }
+}

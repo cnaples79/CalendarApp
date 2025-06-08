@@ -1,0 +1,73 @@
+/* AI Calendar - Black and Blue Theme */
+
+.root {
+    -fx-font-family: 'Arial', sans-serif;
+    -fx-base: #1e1e2f; /* Dark blue-ish base */
+    -fx-background: #12121a; /* Very dark background */
+    -fx-control-inner-background: #2a2a3a; /* Inner background for controls */
+    -fx-accent: #007bff; /* Bright blue accent */
+    -fx-default-button: #007bff;
+    -fx-focus-color: #007bff;
+    -fx-faint-focus-color: #007bff22;
+}
+
+.label {
+    -fx-text-fill: #e0e0ff; /* Light blueish-white text */
+}
+
+.button {
+    -fx-background-color: -fx-accent;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 5;
+    -fx-padding: 8 15 8 15;
+}
+
+.button:hover {
+    -fx-background-color: derive(-fx-accent, 20%);
+}
+
+.button:pressed {
+    -fx-background-color: derive(-fx-accent, -10%);
+}
+
+.text-field, .text-area {
+    -fx-background-color: -fx-control-inner-background;
+    -fx-text-fill: #f0f0ff;
+    -fx-prompt-text-fill: #808090;
+    -fx-border-color: #3a3a4a;
+    -fx-border-width: 1;
+    -fx-border-radius: 3;
+    -fx-background-radius: 3;
+}
+
+.text-area .content {
+    -fx-background-color: -fx-control-inner-background;
+}
+
+.scroll-pane {
+    -fx-background-color: -fx-background;
+}
+
+.scroll-pane > .viewport {
+    -fx-background-color: -fx-background;
+}
+
+/* Chat Area Specific Styles */
+.chat-message-user {
+    -fx-background-color: #2a2a4a; /* Slightly lighter blue for user messages */
+    -fx-padding: 10;
+    -fx-background-radius: 8;
+    -fx-text-fill: #e0e0ff;
+}
+
+.chat-message-ai {
+    -fx-background-color: #3a3a5a; /* A different shade for AI messages */
+    -fx-padding: 10;
+    -fx-background-radius: 8;
+    -fx-text-fill: #d0d0f0;
+}
+
+.chat-message-container {
+    -fx-padding: 5 0 5 0;
+}

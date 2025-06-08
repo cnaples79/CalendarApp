@@ -11,7 +11,7 @@ class AIService {
 
     private CalendarService calendarService
     // Placeholder for a real AI API endpoint and key
-    private final String AI_API_ENDPOINT = System.getenv("AI_CALENDAR_API_ENDPOINT") ?: "https://api.example.com/ai/calendar-chat"
+    private final String AI_API_ENDPOINT = System.getenv("AI_CALENDAR_API_ENDPOINT") ?: "https://openrouter.ai/api/v1/chat/completions"
     private final String AI_API_KEY = System.getenv("AI_CALENDAR_API_KEY") ?: "YOUR_API_KEY_HERE"
 
     AIService(CalendarService calendarService) {
@@ -34,16 +34,13 @@ class AIService {
                 request.setHeader("Content-Type", "application/json")
 
                 def payload = [
-                    query: userQuery,
-                    calendarEvents: calendarService.getAllEvents().collect { event ->
+                    model: "deepseek/deepseek-r1-0528:free",
+                    messages: [
                         [
-                            title: event.title,
-                            startTime: ((LocalDateTime)event.startTime).toString(),
-                            endTime: ((LocalDateTime)event.endTime).toString(),
-                            description: event.description
+                            role: "user",
+                            content: userQuery
                         ]
-                    },
-                    currentTime: LocalDateTime.now().toString()
+                    ]
                 ]
                 StringEntity entity = new StringEntity(new groovy.json.JsonOutput().toJson(payload))
                 request.setEntity(entity)
@@ -52,7 +49,12 @@ class AIService {
                     def responseBody = EntityUtils.toString(response.getEntity())
                     if (response.getCode() >= 200 && response.getCode() < 300) {
                         def jsonResponse = new JsonSlurper().parseText(responseBody)
-                        return jsonResponse.aiSuggestion ?: "AI service did not provide a suggestion."
+                        // Assuming OpenAI-compatible response structure
+                        if (jsonResponse.choices && jsonResponse.choices[0] && jsonResponse.choices[0].message && jsonResponse.choices[0].message.content) {
+                            return jsonResponse.choices[0].message.content
+                        } else {
+                            return "AI service response format unexpected: ${responseBody}"
+                        }
                     } else {
                         return "Error communicating with AI service: ${response.getReasonPhrase()} - ${responseBody}"
                     }

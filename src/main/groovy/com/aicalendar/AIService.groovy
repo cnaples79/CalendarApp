@@ -33,9 +33,24 @@ class AIService {
                 request.setHeader("Authorization", "Bearer ${AI_API_KEY}")
                 request.setHeader("Content-Type", "application/json")
 
+                // Prepare context for the AI
+                def now = LocalDateTime.now()
+                def eventsSummary = calendarService.getAllEvents().collect { event ->
+                    "- ${event.title} from ${((LocalDateTime)event.startTime).toString()} to ${((LocalDateTime)event.endTime).toString()} (${event.description ?: 'No description'})"
+                }.join('\n')
+                if (eventsSummary.isEmpty()) {
+                    eventsSummary = "User's calendar is currently empty."
+                }
+
+                def systemMessageContent = "Current time is ${now.toString()}. User's calendar events:\n${eventsSummary}\nYou are an AI assistant helping the user manage their calendar. Be concise."
+
                 def payload = [
                     model: "deepseek/deepseek-r1-0528:free",
                     messages: [
+                        [
+                            role: "system",
+                            content: systemMessageContent
+                        ],
                         [
                             role: "user",
                             content: userQuery

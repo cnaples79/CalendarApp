@@ -15,6 +15,14 @@ import javafx.scene.layout.BorderPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.VBox
 import javafx.stage.Stage
+import javafx.scene.control.TableView
+import javafx.scene.control.TableColumn
+import javafx.scene.control.cell.PropertyValueFactory
+import javafx.scene.control.SplitPane
+import javafx.collections.FXCollections
+import javafx.collections.ObservableList
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @CompileStatic
 class ChatWindow extends Application {
@@ -24,6 +32,7 @@ class ChatWindow extends Application {
     private AIService aiService
     private CalendarService calendarService
     private ScrollPane scrollPane // Declare scrollPane as a field
+    private TableView<Map<String, Object>> calendarView
 
     @Override
     void start(Stage primaryStage) throws Exception {
@@ -44,7 +53,63 @@ class ChatWindow extends Application {
         scrollPane.fitToWidth = true
         scrollPane.hbarPolicy = ScrollPane.ScrollBarPolicy.NEVER
         scrollPane.vbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
-        root.center = scrollPane
+        // Calendar View Table
+        calendarView = new TableView<Map<String, Object>>()
+        TableColumn<Map<String, Object>, String> titleCol = new TableColumn<>("Title")
+        titleCol.setCellValueFactory(new PropertyValueFactory<>("title"))
+
+        DateTimeFormatter tableDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+        TableColumn<Map<String, Object>, LocalDateTime> startCol = new TableColumn<>("Start Time")
+        startCol.setCellValueFactory(new PropertyValueFactory<>("startTime"))
+        startCol.setCellFactory({ column ->
+            return new javafx.scene.control.TableCell<Map<String, Object>, LocalDateTime>() {
+                @Override
+                protected void updateItem(LocalDateTime item, boolean empty) {
+                    super.updateItem(item, empty)
+                    if (item == null || empty) {
+                        setText(null)
+                    } else {
+                        setText(item.format(tableDateTimeFormatter))
+                    }
+                }
+            }
+        })
+
+        TableColumn<Map<String, Object>, LocalDateTime> endCol = new TableColumn<>("End Time")
+        endCol.setCellValueFactory(new PropertyValueFactory<>("endTime"))
+        endCol.setCellFactory({ column ->
+            return new javafx.scene.control.TableCell<Map<String, Object>, LocalDateTime>() {
+                @Override
+                protected void updateItem(LocalDateTime item, boolean empty) {
+                    super.updateItem(item, empty)
+                    if (item == null || empty) {
+                        setText(null)
+                    } else {
+                        setText(item.format(tableDateTimeFormatter))
+                    }
+                }
+            }
+        })
+
+        TableColumn<Map<String, Object>, String> descCol = new TableColumn<>("Description")
+        descCol.setCellValueFactory(new PropertyValueFactory<>("description"))
+
+        calendarView.getColumns().addAll(titleCol, startCol, endCol, descCol)
+        // Make columns take up available width
+        titleCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
+        startCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
+        endCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
+        descCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
+
+        refreshCalendarView()
+
+        // SplitPane to hold chat and calendar
+        SplitPane splitPane = new SplitPane()
+        splitPane.getItems().addAll(scrollPane, calendarView)
+        splitPane.setDividerPositions(0.5d) // Initial 50/50 split
+
+        root.center = splitPane
 
         // Input area
         inputField = new TextField()
@@ -59,7 +124,7 @@ class ChatWindow extends Application {
         inputArea.alignment = Pos.CENTER
         root.bottom = inputArea
 
-        Scene scene = new Scene(root, 600, 700)
+        Scene scene = new Scene(root, 1200, 700) // Increased width for calendar view
         try {
             String cssPath = getClass().getResource("/com/aicalendar/ui/styles.css")?.toExternalForm()
             if (cssPath != null) {
@@ -125,6 +190,11 @@ class ChatWindow extends Application {
             // Use the class member 'scrollPane' directly
             this.scrollPane.setVvalue(1.0d)
         }
+    }
+
+    private void refreshCalendarView() {
+        ObservableList<Map<String, Object>> events = FXCollections.observableArrayList(calendarService.getAllEvents())
+        calendarView.setItems(events)
     }
 
     static void main(String[] args) {

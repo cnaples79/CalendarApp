@@ -460,15 +460,33 @@ class ChatWindow extends Application {
             grid.vgap = 10
             grid.padding = new Insets(20, 150, 10, 10)
 
-            TextField titleField = new TextField(eventToEdit.title)
-            DatePicker startDatePicker = new DatePicker(eventToEdit.startTime.toLocalDate())
-            TextField startTimeField = new TextField(eventToEdit.startTime.format(DateTimeFormatter.ofPattern("HH:mm")))
+
+            TextField titleField = new TextField()
+            titleField.setText(eventToEdit.title)
+            titleField.setEditable(true)
+
+            DatePicker startDatePicker = new DatePicker()
+            startDatePicker.setValue(eventToEdit.startTime.toLocalDate())
+            startDatePicker.setEditable(true)
+
+            TextField startTimeField = new TextField()
+            startTimeField.setText(eventToEdit.startTime.format(DateTimeFormatter.ofPattern("HH:mm")))
             startTimeField.promptText = "HH:mm"
-            DatePicker endDatePicker = new DatePicker(eventToEdit.endTime.toLocalDate())
-            TextField endTimeField = new TextField(eventToEdit.endTime.format(DateTimeFormatter.ofPattern("HH:mm")))
+            startTimeField.setEditable(true)
+
+            DatePicker endDatePicker = new DatePicker()
+            endDatePicker.setValue(eventToEdit.endTime.toLocalDate())
+            endDatePicker.setEditable(true)
+
+            TextField endTimeField = new TextField()
+            endTimeField.setText(eventToEdit.endTime.format(DateTimeFormatter.ofPattern("HH:mm")))
             endTimeField.promptText = "HH:mm"
-            TextArea descriptionArea = new TextArea(eventToEdit.description)
+            endTimeField.setEditable(true)
+
+            TextArea descriptionArea = new TextArea()
+            descriptionArea.setText(eventToEdit.description)
             descriptionArea.setWrapText(true)
+            descriptionArea.setEditable(true)
 
             grid.add(new Label("Title:"), 0, 0)
             grid.add(titleField, 1, 0)

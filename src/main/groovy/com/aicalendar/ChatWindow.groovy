@@ -244,6 +244,7 @@ class ChatWindow extends Application {
             }
 
             dayCell.setOnMouseClicked { event ->
+                println "ChatWindow: Day cell clicked for date: ${cellDate}"
                 showEventsForDay(cellDate)
             }
             // Add a hover effect to indicate clickable cells
@@ -262,6 +263,7 @@ class ChatWindow extends Application {
     }
 
     private void showEventsForDay(java.time.LocalDate date) {
+        println "ChatWindow: showEventsForDay called for date: ${date}"
         LocalDateTime startOfDay = date.atStartOfDay()
         LocalDateTime endOfDay = date.atTime(23, 59, 59)
         List<Event> events = calendarService.getEvents(startOfDay, endOfDay)
@@ -296,8 +298,9 @@ class ChatWindow extends Application {
             contentTextArea.setEditable(false);
             contentTextArea.setPrefHeight(Region.USE_COMPUTED_SIZE);
         }
-
+        println "ChatWindow: Alert dialog prepared for date: ${date}. Showing alert..."
         alert.showAndWait()
+        println "ChatWindow: Alert dialog closed for date: ${date}"
     }
 
     static void main(String[] args) {

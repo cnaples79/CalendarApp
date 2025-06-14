@@ -99,6 +99,7 @@ class AIService {
                         if (aiTextResponse.startsWith("ACTION:")) {
                             try {
                                 println "AIService: AI response is an ACTION: ${aiTextResponse}"
+                                println "AIService: Raw AI Action Response: ${aiTextResponse}"
                                 if (aiTextResponse.startsWith("ACTION: CREATE_EVENT")) {
                                     def matcher = aiTextResponse =~ /ACTION: CREATE_EVENT title="([^"]+)" startTime="([^"]+)" endTime="([^"]+)"(?: description="([^"]*)")?/
                                     if (matcher.find()) {
@@ -117,7 +118,9 @@ class AIService {
                                     def matcher = aiTextResponse =~ /ACTION: UPDATE_EVENT eventId="([^"]+)"(?: title="([^"]*)")?(?: startTime="([^"]*)")?(?: endTime="([^"]*)")?(?: description="([^"]*)")?/
                                     if (matcher.find()) {
                                         String eventId = matcher.group(1)
+                                        println "AIService: UPDATE - Extracted eventId: ${eventId}"
                                         Event existingEvent = calendarService.getAllEvents().find { it.id == eventId }
+                                        println "AIService: UPDATE - Found existingEvent: ${existingEvent}"
                                         if (!existingEvent) {
                                             return new AIResponsePayload("I tried to update an event, but I couldn't find an event with ID ${eventId}.", false, false)
                                         }
@@ -130,11 +133,15 @@ class AIService {
                                             if (newDescription == null) newDescription = existingEvent.description // keep existing if not provided
 
                                             Event updatedEventDetails = new Event(newTitle, newStartTime, newEndTime, newDescription, eventId) // Pass ID to maintain it
+                                            println "AIService: UPDATE - Constructed updatedEventDetails: ${updatedEventDetails}"
 
                                             boolean success = calendarService.updateEvent(eventId, updatedEventDetails)
+                                            println "AIService: UPDATE - CalendarService.updateEvent success: ${success}"
                                             if (success) {
                                                 String confirmationText = "OK. I've updated the event '${updatedEventDetails.title}'."
-                                                return new AIResponsePayload(confirmationText, false, true, updatedEventDetails)
+                                                AIResponsePayload payloadToReturn = new AIResponsePayload(confirmationText, false, true, updatedEventDetails)
+                                                println "AIService: UPDATE - Returning payload: ${payloadToReturn} (eventModified=${payloadToReturn.eventModified})"
+                                                return payloadToReturn
                                             } else {
                                                 return new AIResponsePayload("I tried to update event ID ${eventId}, but something went wrong.", false, false)
                                             }
@@ -148,10 +155,14 @@ class AIService {
                                     def matcher = aiTextResponse =~ /ACTION: DELETE_EVENT eventId="([^"]+)"/
                                     if (matcher.find()) {
                                         String eventId = matcher.group(1)
+                                        println "AIService: DELETE - Extracted eventId: ${eventId}"
                                         boolean success = calendarService.deleteEvent(eventId)
+                                        println "AIService: DELETE - CalendarService.deleteEvent success: ${success}"
                                         if (success) {
                                             String confirmationText = "OK. I've deleted the event with ID ${eventId}."
-                                            return new AIResponsePayload(confirmationText, false, true)
+                                            AIResponsePayload payloadToReturn = new AIResponsePayload(confirmationText, false, true)
+                                            println "AIService: DELETE - Returning payload: ${payloadToReturn} (eventModified=${payloadToReturn.eventModified})"
+                                            return payloadToReturn
                                         } else {
                                             return new AIResponsePayload("I tried to delete event ID ${eventId}, but I couldn't find it or something went wrong.", false, false)
                                         }

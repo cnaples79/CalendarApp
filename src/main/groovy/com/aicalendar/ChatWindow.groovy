@@ -160,6 +160,7 @@ class ChatWindow extends Application {
         Platform.runLater {
             AIResponsePayload payload = aiService.getAIResponse(userMessage)
             addMessageToChat("AI", payload.textResponse, false)
+            println "ChatWindow.sendMessage: AIResponsePayload - eventCreated=${payload.eventCreated}, eventModified=${payload.eventModified}" // Log flags
             if (payload.eventCreated || payload.eventModified) {
                 populateCalendarGrid() // Refresh calendar if event created or modified
             }

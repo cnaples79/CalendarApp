@@ -2,15 +2,18 @@ package com.aicalendar
 
 import groovy.transform.CompileStatic
 import java.time.LocalDateTime
+import java.util.UUID
 
 @CompileStatic
 class Event {
+    String id
     String title
     LocalDateTime startTime
     LocalDateTime endTime
     String description
 
-    Event(String title, LocalDateTime startTime, LocalDateTime endTime, String description) {
+    Event(String title, LocalDateTime startTime, LocalDateTime endTime, String description = "", String id = null) {
+        this.id = id ?: UUID.randomUUID().toString()
         this.title = title
         this.startTime = startTime
         this.endTime = endTime
@@ -24,6 +27,6 @@ class Event {
 
     @Override
     String toString() {
-        return "Event{title='${title}', startTime=${startTime}, endTime=${endTime}, description='${description}'}"
+        return "Event{id='${id}', title='${title}', startTime=${startTime}, endTime=${endTime}, description='${description}'}"
     }
 }

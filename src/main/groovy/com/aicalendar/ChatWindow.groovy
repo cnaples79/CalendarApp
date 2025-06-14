@@ -74,7 +74,10 @@ class ChatWindow extends Application {
         Button nextMonthButton = new Button("Next >")
         nextMonthButton.onAction = { event -> changeMonth(1) }
 
-        HBox monthNavigation = new HBox(10, prevMonthButton, monthYearLabel, nextMonthButton)
+        Button newEventButton = new Button("New Event")
+        newEventButton.onAction = { event -> showCreateEventDialog() }
+
+        HBox monthNavigation = new HBox(10, prevMonthButton, monthYearLabel, nextMonthButton, newEventButton)
         monthNavigation.alignment = Pos.CENTER
         monthNavigation.padding = new Insets(5)
 
@@ -148,8 +151,8 @@ class ChatWindow extends Application {
         Platform.runLater {
             AIResponsePayload payload = aiService.getAIResponse(userMessage)
             addMessageToChat("AI", payload.textResponse, false)
-            if (payload.eventCreated) {
-                populateCalendarGrid() // Update to call the new method
+            if (payload.eventCreated || payload.eventModified) {
+                populateCalendarGrid() // Refresh calendar if event created or modified
             }
         }
     }
@@ -262,45 +265,268 @@ class ChatWindow extends Application {
         println "ChatWindow: Calendar grid populated for ${currentYearMonth}"
     }
 
-    private void showEventsForDay(java.time.LocalDate date) {
-        println "ChatWindow: showEventsForDay called for date: ${date}"
-        LocalDateTime startOfDay = date.atStartOfDay()
-        LocalDateTime endOfDay = date.atTime(23, 59, 59)
-        List<Event> events = calendarService.getEvents(startOfDay, endOfDay)
+    private void showCreateEventDialog() {
+        Dialog<Event> dialog = new Dialog<>()
+        dialog.title = "Create New Event"
+        dialog.headerText = "Enter the details for the new event."
 
-        Alert alert = new Alert(Alert.AlertType.INFORMATION)
-        alert.title = "Events for ${date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy"))}"
-        alert.headerText = "Events on this day:" // Provide a clear header
+        // Set the button types
+        ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE)
+        dialog.dialogPane.buttonTypes.addAll(saveButtonType, ButtonType.CANCEL)
 
-        TextArea textArea = new TextArea()
-        textArea.setEditable(false)
-        textArea.setWrapText(true)
-        textArea.setPrefHeight(Region.USE_COMPUTED_SIZE) // Allow it to grow
+        // Create labels and fields
+        GridPane grid = new GridPane()
+        grid.hgap = 10
+        grid.vgap = 10
+        grid.padding = new Insets(20, 150, 10, 10)
 
-        if (events.isEmpty()) {
-            textArea.text = "No events scheduled for this day."
-        } else {
-            StringBuilder content = new StringBuilder()
-            events.each { event ->
-                content.append("${event.title}\n")
-                content.append("  Start: ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm"))}\n")
-                content.append("  End:   ${event.endTime.format(DateTimeFormatter.ofPattern("HH:mm"))}\n")
-                if (event.description != null && !event.description.isEmpty()) {
-                    content.append("  Desc:  ${event.description}\n")
+        TextField titleField = new TextField()
+        titleField.promptText = "Event Title"
+        DatePicker startDatePicker = new DatePicker(java.time.LocalDate.now())
+        TextField startTimeField = new TextField()
+        startTimeField.promptText = "HH:mm" // e.g., 14:30
+        DatePicker endDatePicker = new DatePicker(java.time.LocalDate.now())
+        TextField endTimeField = new TextField()
+        endTimeField.promptText = "HH:mm"
+        TextArea descriptionArea = new TextArea()
+        descriptionArea.promptText = "Event Description"
+        descriptionArea.setWrapText(true)
+
+        grid.add(new Label("Title:"), 0, 0)
+        grid.add(titleField, 1, 0)
+        grid.add(new Label("Start Date:"), 0, 1)
+        grid.add(startDatePicker, 1, 1)
+        grid.add(new Label("Start Time (HH:mm):"), 0, 2)
+        grid.add(startTimeField, 1, 2)
+        grid.add(new Label("End Date:"), 0, 3)
+        grid.add(endDatePicker, 1, 3)
+        grid.add(new Label("End Time (HH:mm):"), 0, 4)
+        grid.add(endTimeField, 1, 4)
+        grid.add(new Label("Description:"), 0, 5)
+        grid.add(descriptionArea, 1, 5)
+        GridPane.setVgrow(descriptionArea, Priority.ALWAYS)
+
+        dialog.dialogPane.content = grid
+
+        // Enable/Disable save button depending on whether title is empty
+        Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
+        saveButton.disable = true
+        titleField.textProperty().addListener((observable, oldValue, newValue) -> {
+            saveButton.disable = newValue.trim().isEmpty()
+        })
+
+        // Convert the result to an event object when the save button is clicked.
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == saveButtonType) {
+                try {
+                    java.time.LocalDate startDate = startDatePicker.getValue()
+                    java.time.LocalTime startTime = java.time.LocalTime.parse(startTimeField.getText(), DateTimeFormatter.ofPattern("HH:mm"))
+                    java.time.LocalDate endDate = endDatePicker.getValue()
+                    java.time.LocalTime endTime = java.time.LocalTime.parse(endTimeField.getText(), DateTimeFormatter.ofPattern("HH:mm"))
+
+                    LocalDateTime startDateTime = LocalDateTime.of(startDate, startTime)
+                    LocalDateTime endDateTime = LocalDateTime.of(endDate, endTime)
+
+                    if (endDateTime.isBefore(startDateTime)) {
+                        throw new IllegalArgumentException("End date/time must be after start date/time.")
+                    }
+
+                    return new Event(titleField.getText(), startDateTime, endDateTime, descriptionArea.getText())
+                } catch (DateTimeParseException e) {
+                    Platform.runLater(() -> {
+                        Alert alert = new Alert(Alert.AlertType.ERROR)
+                        alert.title = "Invalid Time Format"
+                        alert.headerText = "Please enter time in HH:mm format (e.g., 09:00 or 15:30)."
+                        alert.contentText = e.getMessage()
+                        alert.showAndWait()
+                    })
+                    return null
+                } catch (IllegalArgumentException e) {
+                     Platform.runLater(() -> {
+                        Alert alert = new Alert(Alert.AlertType.ERROR)
+                        alert.title = "Invalid Date/Time Logic"
+                        alert.headerText = e.getMessage()
+                        alert.showAndWait()
+                    })
+                    return null
                 }
-                content.append("\n")
             }
-            textArea.text = content.toString()
+            return null
+        })
+
+        Optional<Event> result = dialog.showAndWait()
+
+        result.ifPresent(event -> {
+            calendarService.addEvent(event)
+            populateCalendarGrid()
+            println "ChatWindow: Event created via dialog: ${event}"
+        })
+    }
+
+        private void showEventsForDay(java.time.LocalDate date) {
+            println "ChatWindow: showEventsForDay called for date: ${date}"
+            LocalDateTime startOfDay = date.atStartOfDay()
+            LocalDateTime endOfDay = date.atTime(23, 59, 59)
+            List<Event> events = calendarService.getEvents(startOfDay, endOfDay)
+
+            Dialog dialog = new Dialog<>()
+            dialog.title = "Events on ${date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy"))}"
+            dialog.headerText = null
+            dialog.dialogPane.buttonTypes.add(ButtonType.CLOSE)
+
+            VBox eventsVBox = new VBox(10)
+            eventsVBox.padding = new Insets(10)
+            eventsVBox.alignment = Pos.TOP_LEFT
+
+            if (events.isEmpty()) {
+                eventsVBox.children.add(new Label("No events scheduled for this day."))
+            } else {
+                events.each { Event event ->
+                    VBox eventBox = new VBox(5)
+                    eventBox.style = "-fx-border-color: lightgray; -fx-border-width: 1; -fx-padding: 5;"
+                    Label titleLabel = new Label("${event.title} (${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm"))} - ${event.endTime.format(DateTimeFormatter.ofPattern("HH:mm"))})")
+                    titleLabel.style = "-fx-font-weight: bold;"
+                    Label descLabel = new Label("Description: ${event.description ?: 'N/A'}")
+                    descLabel.wrapText = true
+                    Label idLabel = new Label("(ID: ${event.id})")
+                    idLabel.style = "-fx-font-size: 0.8em; -fx-text-fill: gray;"
+
+                    Button editButton = new Button("Edit")
+                    editButton.onAction = { evt -> 
+                        dialog.close() // Close current dialog before opening edit dialog
+                        showEditEventDialog(event) 
+                    }
+                    Button deleteButton = new Button("Delete")
+                    deleteButton.onAction = { evt ->
+                        Alert confirmDeleteAlert = new Alert(Alert.AlertType.CONFIRMATION)
+                        confirmDeleteAlert.title = "Confirm Deletion"
+                        confirmDeleteAlert.headerText = "Delete Event: ${event.title}?"
+                        confirmDeleteAlert.contentText = "Are you sure you want to delete this event? This action cannot be undone."
+                        Optional<ButtonType> result = confirmDeleteAlert.showAndWait()
+                        if (result.isPresent() && result.get() == ButtonType.OK) {
+                            calendarService.deleteEvent(event.id)
+                            populateCalendarGrid()
+                            dialog.close() // Close the events list dialog
+                            // Optionally, show a notification that event was deleted or re-open day view
+                        }
+                    }
+                    HBox buttonBox = new HBox(10, editButton, deleteButton)
+                    buttonBox.alignment = Pos.CENTER_RIGHT
+                    eventBox.children.addAll(titleLabel, descLabel, idLabel, buttonBox)
+                    eventsVBox.children.add(eventBox)
+                }
+            }
+            
+            ScrollPane scrollableEvents = new ScrollPane(eventsVBox)
+            scrollableEvents.setFitToWidth(true)
+            scrollableEvents.setPrefHeight(300) // Set a preferred height for scrollable area
+
+            dialog.dialogPane.content = scrollableEvents
+            dialog.dialogPane.setPrefSize(500, 400) // Set a preferred size for the dialog
+            dialog.showAndWait()
         }
 
-        DialogPane dialogPane = alert.getDialogPane();
-        dialogPane.setPrefWidth(400); // Set a preferred width
-        dialogPane.setMinHeight(Region.USE_PREF_SIZE); // Ensure min height is respected
-        dialogPane.setContent(textArea); // Set the TextArea as the content
-        println "ChatWindow: Alert dialog prepared for date: ${date}. Showing alert..."
-        alert.showAndWait()
-        println "ChatWindow: Alert dialog closed for date: ${date}"
-    }
+        private void showEditEventDialog(Event eventToEdit) {
+            Dialog<Event> dialog = new Dialog<>()
+            dialog.title = "Edit Event"
+            dialog.headerText = "Update the details for '${eventToEdit.title}'."
+
+            ButtonType saveButtonType = new ButtonType("Save Changes", ButtonBar.ButtonData.OK_DONE)
+            dialog.dialogPane.buttonTypes.addAll(saveButtonType, ButtonType.CANCEL)
+
+            GridPane grid = new GridPane()
+            grid.hgap = 10
+            grid.vgap = 10
+            grid.padding = new Insets(20, 150, 10, 10)
+
+            TextField titleField = new TextField(eventToEdit.title)
+            DatePicker startDatePicker = new DatePicker(eventToEdit.startTime.toLocalDate())
+            TextField startTimeField = new TextField(eventToEdit.startTime.format(DateTimeFormatter.ofPattern("HH:mm")))
+            startTimeField.promptText = "HH:mm"
+            DatePicker endDatePicker = new DatePicker(eventToEdit.endTime.toLocalDate())
+            TextField endTimeField = new TextField(eventToEdit.endTime.format(DateTimeFormatter.ofPattern("HH:mm")))
+            endTimeField.promptText = "HH:mm"
+            TextArea descriptionArea = new TextArea(eventToEdit.description)
+            descriptionArea.setWrapText(true)
+
+            grid.add(new Label("Title:"), 0, 0)
+            grid.add(titleField, 1, 0)
+            grid.add(new Label("Start Date:"), 0, 1)
+            grid.add(startDatePicker, 1, 1)
+            grid.add(new Label("Start Time (HH:mm):"), 0, 2)
+            grid.add(startTimeField, 1, 2)
+            grid.add(new Label("End Date:"), 0, 3)
+            grid.add(endDatePicker, 1, 3)
+            grid.add(new Label("End Time (HH:mm):"), 0, 4)
+            grid.add(endTimeField, 1, 4)
+            grid.add(new Label("Description:"), 0, 5)
+            grid.add(descriptionArea, 1, 5)
+            GridPane.setVgrow(descriptionArea, Priority.ALWAYS)
+
+            dialog.dialogPane.content = grid
+
+            Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
+            saveButton.disable = titleField.text.trim().isEmpty()
+            titleField.textProperty().addListener((observable, oldValue, newValue) -> {
+                saveButton.disable = newValue.trim().isEmpty()
+            })
+
+            dialog.setResultConverter(dialogButton -> {
+                if (dialogButton == saveButtonType) {
+                    try {
+                        java.time.LocalDate startDate = startDatePicker.getValue()
+                        java.time.LocalTime startTime = java.time.LocalTime.parse(startTimeField.getText(), DateTimeFormatter.ofPattern("HH:mm"))
+                        java.time.LocalDate endDate = endDatePicker.getValue()
+                        java.time.LocalTime endTime = java.time.LocalTime.parse(endTimeField.getText(), DateTimeFormatter.ofPattern("HH:mm"))
+
+                        LocalDateTime startDateTime = LocalDateTime.of(startDate, startTime)
+                        LocalDateTime endDateTime = LocalDateTime.of(endDate, endTime)
+
+                        if (endDateTime.isBefore(startDateTime)) {
+                            throw new IllegalArgumentException("End date/time must be after start date/time.")
+                        }
+                        // Create a new event object with the original ID but new details
+                        Event updatedEvent = new Event(eventToEdit.id, titleField.getText(), startDateTime, endDateTime, descriptionArea.getText())
+                        return updatedEvent
+                    } catch (DateTimeParseException e) {
+                        Platform.runLater(() -> {
+                            Alert alert = new Alert(Alert.AlertType.ERROR)
+                            alert.title = "Invalid Time Format"
+                            alert.headerText = "Please enter time in HH:mm format (e.g., 09:00 or 15:30)."
+                            alert.contentText = e.getMessage()
+                            alert.showAndWait()
+                        })
+                        return null
+                    } catch (IllegalArgumentException e) {
+                         Platform.runLater(() -> {
+                            Alert alert = new Alert(Alert.AlertType.ERROR)
+                            alert.title = "Invalid Date/Time Logic"
+                            alert.headerText = e.getMessage()
+                            alert.showAndWait()
+                        })
+                        return null
+                    }
+                }
+                return null
+            })
+
+            Optional<Event> result = dialog.showAndWait()
+
+            result.ifPresent(updatedEventData -> {
+                boolean success = calendarService.updateEvent(eventToEdit.id, updatedEventData)
+                if (success) {
+                    populateCalendarGrid()
+                    println "ChatWindow: Event updated via dialog: ${updatedEventData}"
+                } else {
+                    Platform.runLater(() -> {
+                        Alert alert = new Alert(Alert.AlertType.ERROR)
+                        alert.title = "Update Failed"
+                        alert.headerText = "Could not update the event (ID: ${eventToEdit.id}). It might have been deleted."
+                        alert.showAndWait()
+                    })
+                }
+            })
+        }
 
     static void main(String[] args) {
         launch(args)

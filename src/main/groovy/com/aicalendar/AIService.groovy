@@ -16,13 +16,15 @@ import com.aicalendar.Event
 @CompileStatic
 class AIResponsePayload {
     String textResponse
-    boolean eventCreated
-    Event createdEvent // Optional, holds the newly created Event object
+    boolean eventCreated = false
+    boolean eventModified = false // Added for update/delete
+    Event event // Store the created/modified event if applicable
 
-    AIResponsePayload(String textResponse, boolean eventCreated = false, Event createdEvent = null) {
+    AIResponsePayload(String textResponse, boolean eventCreated = false, boolean eventModified = false, Event event = null) {
         this.textResponse = textResponse
         this.eventCreated = eventCreated
-        this.createdEvent = createdEvent
+        this.eventModified = eventModified
+        this.event = event
     }
 }
 
@@ -32,10 +34,6 @@ class AIService {
     private CalendarService calendarService
     private final String AI_API_ENDPOINT = System.getenv("AI_CALENDAR_API_ENDPOINT") ?: "https://openrouter.ai/api/v1/chat/completions"
     private final String AI_API_KEY = System.getenv("AI_CALENDAR_API_KEY") ?: "YOUR_API_KEY_HERE"
-
-    private static final Pattern CREATE_EVENT_PATTERN = Pattern.compile(
-        "ACTION: CREATE_EVENT title=\"(.*?)\" startTime=\"(.*?)\" endTime=\"(.*?)\"(?: description=\"(.*?)\")?"
-    )
 
     AIService(CalendarService calendarService) {
         this.calendarService = calendarService
@@ -54,23 +52,29 @@ class AIService {
                 request.setHeader("Content-Type", "application/json")
 
                 def now = LocalDateTime.now()
-                def eventsSummary = calendarService.getAllEvents().collect { Event event -> // Explicitly type event
-                    "- ${event.title} from ${event.startTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} to ${event.endTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} (${event.description ?: 'No description'})"
-                }.join('\n')
-                if (eventsSummary.isEmpty()) {
-                    eventsSummary = "User's calendar is currently empty."
-                }
+                def eventsSummary = getCalendarEventsWithIdsAsString()
 
-                def systemMessageContent = """Current time is ${now.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}. User's calendar events:
-${eventsSummary}
-You are an AI assistant helping the user manage their calendar. Be concise.
-When you decide to create a calendar event based on the user's request, you MUST include a line in your response formatted EXACTLY as follows (do not surround it with backticks or any other formatting):
-ACTION: CREATE_EVENT title="<event_title>" startTime="<YYYY-MM-DDTHH:MM>" endTime="<YYYY-MM-DDTHH:MM>" description="<event_description>"
-Replace <event_title>, <YYYY-MM-DDTHH:MM> (for both start and end times, using 24-hour format), and <event_description> with the actual details.
-The description is optional. If no description, you can omit the description part entirely (e.g., ACTION: CREATE_EVENT title="Meeting" startTime="2024-07-01T10:00" endTime="2024-07-01T11:00") or provide an empty one (description="").
-Ensure date and time formats are strictly YYYY-MM-DDTHH:MM. Provide your normal conversational response before or after this ACTION line.
-Do not add any extra fields to the ACTION line.
-"""
+                def systemMessageContent = """
+            You are a helpful calendar assistant. Your goal is to help the user manage their calendar. 
+            
+            Available Actions:
+            1. Create an event: 
+               ACTION: CREATE_EVENT title="<event_title>" startTime="<YYYY-MM-DDTHH:MM>" endTime="<YYYY-MM-DDTHH:MM>" description="<event_description>"
+               (description is optional; title, startTime, endTime are mandatory)
+            2. Update an existing event:
+               ACTION: UPDATE_EVENT eventId="<event_id_to_update>" title="<new_title>" startTime="<YYYY-MM-DDTHH:MM>" endTime="<YYYY-MM-DDTHH:MM>" description="<new_description>"
+               (eventId is mandatory; title, startTime, endTime, description are optional - only include fields you want to change)
+            3. Delete an existing event:
+               ACTION: DELETE_EVENT eventId="<event_id_to_delete>"
+               (eventId is mandatory)
+
+            When you perform an action, use the specified format and nothing else in that part of your response. 
+            You MUST use the correct eventId when updating or deleting an event. Event IDs will be provided when events are listed.
+            For all other interactions, or if providing text alongside an action, respond as a helpful assistant normally would.
+            
+            Current calendar events (with IDs):
+            ${eventsSummary}
+            """.stripIndent()
 
                 def payload = [
                     model: "deepseek/deepseek-r1-0528:free", 
@@ -97,84 +101,141 @@ Do not add any extra fields to the ACTION line.
                                 if (message != null && message.get("content") instanceof String) {
                                     aiTextResponse = (String) message.get("content")
                                 } else {
-                                    return new AIResponsePayload("AI service response format unexpected (missing message content): ${responseBody}", false)
+                                    return new AIResponsePayload(textResponse: "AI service response format unexpected (missing message content): ${responseBody}", eventCreated: false, eventModified: false)
                                 }
                             } else {
-                                return new AIResponsePayload("AI service response format unexpected (empty choice): ${responseBody}", false)
+                                return new AIResponsePayload(textResponse: "AI service response format unexpected (empty choice): ${responseBody}", eventCreated: false, eventModified: false)
                             }
                         } else {
-                            return new AIResponsePayload("AI service response format unexpected (no choices): ${responseBody}", false)
+                            return new AIResponsePayload(textResponse: "AI service response format unexpected (no choices): ${responseBody}", eventCreated: false, eventModified: false)
                         }
 
-                        Matcher matcher = CREATE_EVENT_PATTERN.matcher(aiTextResponse)
-                        if (matcher.find()) {
-                            try {
-                                String title = matcher.group(1)
-                                String startTimeStr = matcher.group(2)
-                                String endTimeStr = matcher.group(3)
-                                String description = matcher.group(4) ?: ""
-
-                                LocalDateTime startTime = LocalDateTime.parse(startTimeStr) // Assumes YYYY-MM-DDTHH:MM
-                                LocalDateTime endTime = LocalDateTime.parse(endTimeStr)   // Assumes YYYY-MM-DDTHH:MM
-                                
-                                Event newAiEvent = new Event(title, startTime, endTime, description)
-                                calendarService.addEvent(newAiEvent) // Use the overloaded method
-                                
-                                String confirmationMessage = "OK, I've added '${title}' to your calendar from ${startTime.format(DateTimeFormatter.ofPattern("MMM d, HH:mm"))} to ${endTime.format(DateTimeFormatter.ofPattern("MMM d, HH:mm"))}."
-                                
-                                String cleanedAiTextResponse = aiTextResponse.replace(matcher.group(0), "").trim()
-                                if (cleanedAiTextResponse.isEmpty() && !confirmationMessage.isEmpty()) {
-                                    cleanedAiTextResponse = confirmationMessage
-                                } else if (!cleanedAiTextResponse.isEmpty() && !confirmationMessage.isEmpty()) {
-                                    cleanedAiTextResponse = confirmationMessage + "\n" + cleanedAiTextResponse
-                                } else if (cleanedAiTextResponse.isEmpty() && confirmationMessage.isEmpty()) {
-                                    cleanedAiTextResponse = "Event created."
+                        // Check for AI actions
+                        if (aiTextResponse.startsWith("ACTION:")) {
+                            println "AIService: AI response is an ACTION: ${aiTextResponse}"
+                            if (aiTextResponse.startsWith("ACTION: CREATE_EVENT")) {
+                                def matcher = aiTextResponse =~ /ACTION: CREATE_EVENT title="([^"]+)" startTime="([^"]+)" endTime="([^"]+)"(?: description="([^"]*)")?/
+                                if (matcher.find()) {
+                                    String title = matcher.group(1)
+                                    LocalDateTime startTime = LocalDateTime.parse(matcher.group(2), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                                    LocalDateTime endTime = LocalDateTime.parse(matcher.group(3), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                                    String description = matcher.group(4) ?: ""
+                                    Event newEvent = new Event(title, startTime, endTime, description)
+                                    calendarService.addEvent(newEvent)
+                                    String confirmationText = "OK. I've added '${title}' to your calendar."
+                                    return new AIResponsePayload(textResponse: confirmationText, eventCreated: true, eventModified: false, event: newEvent)
+                                } else {
+                                    return new AIResponsePayload(textResponse: "I tried to create an event, but the format was incorrect.", eventCreated: false, eventModified: false)
                                 }
-                                return new AIResponsePayload(cleanedAiTextResponse, true, newAiEvent)
-                            } catch (DateTimeParseException e) {
-                                e.printStackTrace()
-                                return new AIResponsePayload("AI tried to create an event, but there was an error with the date/time format: ${e.getMessage()}. Original AI response: ${aiTextResponse}", false)
-                            } catch (Exception e) {
-                                e.printStackTrace()
-                                return new AIResponsePayload("Error processing AI action to create event: ${e.getMessage()}. Original AI response: ${aiTextResponse}", false)
+                            } else if (aiTextResponse.startsWith("ACTION: UPDATE_EVENT")) {
+                                def matcher = aiTextResponse =~ /ACTION: UPDATE_EVENT eventId="([^"]+)"(?: title="([^"]*)")?(?: startTime="([^"]*)")?(?: endTime="([^"]*)")?(?: description="([^"]*)")?/
+                                if (matcher.find()) {
+                                    String eventId = matcher.group(1)
+                                    Event existingEvent = calendarService.getAllEvents().find { it.id == eventId }
+                                    if (!existingEvent) {
+                                        return new AIResponsePayload(textResponse: "I tried to update an event, but I couldn't find an event with ID ${eventId}.", eventCreated: false, eventModified: false)
+                                    }
+                                    try {
+                                        // Create a new event object with potentially updated fields, using existing values as defaults
+                                        String newTitle = matcher.group(2) ?: existingEvent.title
+                                        LocalDateTime newStartTime = matcher.group(3) ? LocalDateTime.parse(matcher.group(3), DateTimeFormatter.ISO_LOCAL_DATE_TIME) : existingEvent.startTime
+                                        LocalDateTime newEndTime = matcher.group(4) ? LocalDateTime.parse(matcher.group(4), DateTimeFormatter.ISO_LOCAL_DATE_TIME) : existingEvent.endTime
+                                        String newDescription = matcher.group(5) // if null, keep existing; if empty string, clear it
+                                        if (newDescription == null) newDescription = existingEvent.description // keep existing if not provided
+
+                                        Event updatedEventDetails = new Event(newTitle, newStartTime, newEndTime, newDescription, eventId) // Pass ID to maintain it
+
+                                        boolean success = calendarService.updateEvent(eventId, updatedEventDetails)
+                                        if (success) {
+                                            String confirmationText = "OK. I've updated the event '${updatedEventDetails.title}'."
+                                            return new AIResponsePayload(textResponse: confirmationText, eventCreated: false, eventModified: true, event: updatedEventDetails)
+                                        } else {
+                                            return new AIResponsePayload(textResponse: "I tried to update event ID ${eventId}, but something went wrong.", eventCreated: false, eventModified: false)
+                                        }
+                                    } catch (DateTimeParseException e) {
+                                        return new AIResponsePayload(textResponse: "I tried to update an event, but the date/time format was incorrect: ${e.message}", eventCreated: false, eventModified: false)
+                                    }
+                                } else {
+                                    return new AIResponsePayload(textResponse: "I tried to update an event, but the command format was incorrect.", eventCreated: false, eventModified: false)
+                                }
+                            } else if (aiTextResponse.startsWith("ACTION: DELETE_EVENT")) {
+                                def matcher = aiTextResponse =~ /ACTION: DELETE_EVENT eventId="([^"]+)"/
+                                if (matcher.find()) {
+                                    String eventId = matcher.group(1)
+                                    boolean success = calendarService.deleteEvent(eventId)
+                                    if (success) {
+                                        String confirmationText = "OK. I've deleted the event with ID ${eventId}."
+                                        return new AIResponsePayload(textResponse: confirmationText, eventCreated: false, eventModified: true)
+                                    } else {
+                                        return new AIResponsePayload(textResponse: "I tried to delete event ID ${eventId}, but I couldn't find it or something went wrong.", eventCreated: false, eventModified: false)
+                                    }
+                                } else {
+                                    return new AIResponsePayload(textResponse: "I tried to delete an event, but the command format was incorrect.", eventCreated: false, eventModified: false)
+                                }
+                            } else {
+                                // Unknown action or malformed
+                                return new AIResponsePayload(textResponse: "I received an action I didn't understand or it was formatted incorrectly: ${aiTextResponse}", eventCreated: false, eventModified: false)
                             }
+                        } catch (DateTimeParseException e) {
+                            // This catch is primarily for CREATE_EVENT if its date parsing fails
+                            e.printStackTrace()
+                            return new AIResponsePayload(textResponse: "There was an error with the date/time format for an event action: ${e.getMessage()}. Original AI response: ${aiTextResponse}", eventCreated: false, eventModified: false)
+                        } catch (Exception e) {
+                            e.printStackTrace()
+                            return new AIResponsePayload(textResponse: "Error processing AI action: ${e.getMessage()}. Original AI response: ${aiTextResponse}", eventCreated: false, eventModified: false)
                         }
-                        return new AIResponsePayload(aiTextResponse, false)
+                        // If aiTextResponse didn't start with "ACTION:" or was an unhandled action that fell through
+                        return new AIResponsePayload(textResponse: aiTextResponse, eventCreated: false, eventModified: false)
                     } else {
-                        return new AIResponsePayload("Error communicating with AI service: ${response.getReasonPhrase()} - ${responseBody}", false)
+                        return new AIResponsePayload(textResponse: "Error communicating with AI service: ${response.getReasonPhrase()} - ${responseBody}", eventCreated: false, eventModified: false)
                     }
                 }
             }
         } catch (Exception e) {
             e.printStackTrace()
-            return new AIResponsePayload("Error connecting to AI service: ${e.message}. Falling back to mock response.\n${getMockAIResponse(userQuery).textResponse}", false)
+            return new AIResponsePayload(textResponse: "Error connecting to AI service: ${e.message}. Falling back to mock response.\n${getMockAIResponse(userQuery).textResponse}", eventCreated: false, eventModified: false)
         }
+    }
+
+    private String getCalendarEventsWithIdsAsString() {
+        List<Event> events = calendarService.getAllEvents()
+        if (events.isEmpty()) {
+            return "No events scheduled."
+        }
+        return events.collect { event ->
+            "- ID: ${event.id}, Title: ${event.title}, Start: ${event.startTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}, End: ${event.endTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}${event.description ? ', Desc: ' + event.description : ''}"
+        }.join("\n")
     }
 
     AIResponsePayload getMockAIResponse(String userQuery) {
         def query = userQuery.toLowerCase()
         String textResponse
-        if (query.contains("hello") || query.contains("hi")) {
-            textResponse = "Hello! How can I help you with your calendar today?"
-        } else if (query.contains("what's on my calendar") || query.contains("show events")) {
-            def events = calendarService.getAllEvents()
-            if (events.isEmpty()) {
-                textResponse = "Your calendar is empty."
+        boolean eventCreated = false
+        boolean eventModified = false
+        Event anEvent = null
+
+        if (query.contains("create event") || query.contains("add event")) {
+            if (query.contains("meeting tomorrow at 10am")) {
+                LocalDateTime startTime = LocalDateTime.now().plusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0)
+                LocalDateTime endTime = startTime.plusHours(1)
+                anEvent = new Event("Team Meeting", startTime, endTime, "Discuss project updates")
+                calendarService.addEvent(anEvent)
+                textResponse = "ACTION: CREATE_EVENT title=\"Team Meeting\" startTime=\"${startTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}\" endTime=\"${endTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)}\" description=\"Discuss project updates\"\nOK, I've added 'Team Meeting' to your calendar for tomorrow at 10 AM."
+                eventCreated = true
             } else {
-                textResponse = "Here are your upcoming events:\n"
-                events.each { event ->
-                    textResponse += "- ${calendarService.formatEvent(event)}\n"
-                }
+                textResponse = "I can help with that. What are the details of the event? (Mock response)"
             }
-        } else if (query.contains("add event") || query.contains("schedule")) {
-            textResponse = "Sure, I can help with that. What is the event title, date (YYYY-MM-DD), start time (HH:MM), end time (HH:MM), and description? For example: 'Schedule a meeting for 2024-07-15 at 14:00 until 15:00 titled Project Sync about our progress.'"
-        } else if (query.contains("suggest")) {
-            textResponse = "I can suggest optimal times for new events or help you organize your schedule. What are you trying to plan?"
-        } else if (query.contains("theme")) {
-            textResponse = "I'm currently rocking a cool black and blue theme! What do you think?"
+        } else if (query.contains("what's on my calendar")) {
+            List<Event> events = calendarService.getAllEvents()
+            if (events.isEmpty()) {
+                textResponse = "Your calendar is empty. (Mock response)"
+            } else {
+                textResponse = "Here are your upcoming events (Mock response):\n" +
+                               events.collect { "- ID: ${it.id}, ${it.title} on ${it.startTime.toLocalDate()} from ${it.startTime.toLocalTime()} to ${it.endTime.toLocalTime()}" }.join("\n")
+            }
         } else {
-            textResponse = "I'm still learning! I can show your events or help schedule new ones. Try asking 'What's on my calendar?' or 'Schedule a new event.'"
+            textResponse = "I'm a mock AI. I can only create a 'Team Meeting tomorrow at 10am' or show events. You said: ${userQuery}"
         }
-        return new AIResponsePayload(textResponse, false)
+        return new AIResponsePayload(textResponse: textResponse, eventCreated: eventCreated, eventModified: eventModified, event: anEvent)
     }
 }

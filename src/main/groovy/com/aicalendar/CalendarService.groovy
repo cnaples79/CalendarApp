@@ -44,6 +44,32 @@ class CalendarService {
         return new ArrayList<>(events) // Return a copy
     }
 
+    boolean updateEvent(String eventId, Event eventWithNewDetails) {
+        int eventIndex = events.findIndexOf { it.id == eventId }
+        if (eventIndex != -1) {
+            Event existingEvent = events.get(eventIndex)
+            existingEvent.title = eventWithNewDetails.title
+            existingEvent.startTime = eventWithNewDetails.startTime
+            existingEvent.endTime = eventWithNewDetails.endTime
+            existingEvent.description = eventWithNewDetails.description
+            println "CalendarService: Updated event ID ${eventId}: ${existingEvent}"
+            return true
+        } else {
+            println "CalendarService: Update failed. Event ID ${eventId} not found."
+            return false
+        }
+    }
+
+    boolean deleteEvent(String eventId) {
+        boolean removed = events.removeIf { it.id == eventId }
+        if (removed) {
+            println "CalendarService: Deleted event ID ${eventId}"
+        } else {
+            println "CalendarService: Delete failed. Event ID ${eventId} not found."
+        }
+        return removed
+    }
+
     String formatEvent(Event event) {
         "'${event.title}' from ${event.startTime.format(formatter)} to ${event.endTime.format(formatter)}. Description: ${event.description ?: 'N/A'}"
     }

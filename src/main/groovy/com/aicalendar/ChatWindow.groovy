@@ -270,10 +270,15 @@ class ChatWindow extends Application {
 
         Alert alert = new Alert(Alert.AlertType.INFORMATION)
         alert.title = "Events for ${date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy"))}"
-        alert.headerText = null // No header
+        alert.headerText = "Events on this day:" // Provide a clear header
+
+        TextArea textArea = new TextArea()
+        textArea.setEditable(false)
+        textArea.setWrapText(true)
+        textArea.setPrefHeight(Region.USE_COMPUTED_SIZE) // Allow it to grow
 
         if (events.isEmpty()) {
-            alert.contentText = "No events scheduled for this day."
+            textArea.text = "No events scheduled for this day."
         } else {
             StringBuilder content = new StringBuilder()
             events.each { event ->
@@ -285,19 +290,13 @@ class ChatWindow extends Application {
                 }
                 content.append("\n")
             }
-            alert.contentText = content.toString()
+            textArea.text = content.toString()
         }
-        // Make dialog resizable and wrap text
+
         DialogPane dialogPane = alert.getDialogPane();
         dialogPane.setPrefWidth(400); // Set a preferred width
-        dialogPane.setPrefHeight(300); // Set a preferred height
-        // Access the content TextArea to enable wrapping (requires lookup)
-        TextArea contentTextArea = (TextArea) dialogPane.lookup(".content.label");
-        if (contentTextArea != null) {
-            contentTextArea.setWrapText(true);
-            contentTextArea.setEditable(false);
-            contentTextArea.setPrefHeight(Region.USE_COMPUTED_SIZE);
-        }
+        dialogPane.setMinHeight(Region.USE_PREF_SIZE); // Ensure min height is respected
+        dialogPane.setContent(textArea); // Set the TextArea as the content
         println "ChatWindow: Alert dialog prepared for date: ${date}. Showing alert..."
         alert.showAndWait()
         println "ChatWindow: Alert dialog closed for date: ${date}"

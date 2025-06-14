@@ -11,17 +11,18 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.util.regex.Matcher
 import java.util.regex.Pattern
+import com.aicalendar.Event
 
 @CompileStatic
 class AIResponsePayload {
     String textResponse
     boolean eventCreated
-    Map<String, Object> createdEventDetails // Optional
+    Event createdEvent // Optional, holds the newly created Event object
 
-    AIResponsePayload(String textResponse, boolean eventCreated = false, Map<String, Object> createdEventDetails = null) {
+    AIResponsePayload(String textResponse, boolean eventCreated = false, Event createdEvent = null) {
         this.textResponse = textResponse
         this.eventCreated = eventCreated
-        this.createdEventDetails = createdEventDetails
+        this.createdEvent = createdEvent
     }
 }
 
@@ -53,8 +54,8 @@ class AIService {
                 request.setHeader("Content-Type", "application/json")
 
                 def now = LocalDateTime.now()
-                def eventsSummary = calendarService.getAllEvents().collect { event ->
-                    "- ${event.title} from ${((LocalDateTime)event.startTime).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} to ${((LocalDateTime)event.endTime).format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} (${event.description ?: 'No description'})"
+                def eventsSummary = calendarService.getAllEvents().collect { Event event -> // Explicitly type event
+                    "- ${event.title} from ${event.startTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} to ${event.endTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} (${event.description ?: 'No description'})"
                 }.join('\n')
                 if (eventsSummary.isEmpty()) {
                     eventsSummary = "User's calendar is currently empty."
@@ -116,7 +117,9 @@ Do not add any extra fields to the ACTION line.
                                 LocalDateTime startTime = LocalDateTime.parse(startTimeStr) // Assumes YYYY-MM-DDTHH:MM
                                 LocalDateTime endTime = LocalDateTime.parse(endTimeStr)   // Assumes YYYY-MM-DDTHH:MM
                                 
-                                calendarService.addEvent(title, startTime, endTime, description)
+                                Event newAiEvent = new Event(title, startTime, endTime, description)
+                                calendarService.addEvent(newAiEvent) // Use the overloaded method
+                                
                                 String confirmationMessage = "OK, I've added '${title}' to your calendar from ${startTime.format(DateTimeFormatter.ofPattern("MMM d, HH:mm"))} to ${endTime.format(DateTimeFormatter.ofPattern("MMM d, HH:mm"))}."
                                 
                                 String cleanedAiTextResponse = aiTextResponse.replace(matcher.group(0), "").trim()
@@ -127,12 +130,7 @@ Do not add any extra fields to the ACTION line.
                                 } else if (cleanedAiTextResponse.isEmpty() && confirmationMessage.isEmpty()) {
                                     cleanedAiTextResponse = "Event created."
                                 }
-                                Map<String, Object> eventDetailsMap = new HashMap<String, Object>()
-                                eventDetailsMap.put("title", title)
-                                eventDetailsMap.put("startTime", startTime)
-                                eventDetailsMap.put("endTime", endTime)
-                                eventDetailsMap.put("description", description)
-                                return new AIResponsePayload(cleanedAiTextResponse, true, eventDetailsMap)
+                                return new AIResponsePayload(cleanedAiTextResponse, true, newAiEvent)
                             } catch (DateTimeParseException e) {
                                 e.printStackTrace()
                                 return new AIResponsePayload("AI tried to create an event, but there was an error with the date/time format: ${e.getMessage()}. Original AI response: ${aiTextResponse}", false)

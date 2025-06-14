@@ -22,6 +22,7 @@ import javafx.scene.control.SplitPane
 import javafx.collections.FXCollections
 import javafx.collections.ObservableList
 import java.time.LocalDateTime
+import com.aicalendar.Event
 import java.time.format.DateTimeFormatter
 
 @CompileStatic
@@ -32,8 +33,8 @@ class ChatWindow extends Application {
     private AIService aiService
     private CalendarService calendarService
     private ScrollPane scrollPane // Declare scrollPane as a field
-    private TableView<Map<String, Object>> calendarView
-    private ObservableList<Map<String, Object>> calendarEventsList
+    private TableView<Event> calendarView
+    private ObservableList<Event> calendarEventsList
 
     @Override
     void start(Stage primaryStage) throws Exception {
@@ -55,16 +56,16 @@ class ChatWindow extends Application {
         scrollPane.hbarPolicy = ScrollPane.ScrollBarPolicy.NEVER
         scrollPane.vbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
         // Calendar View Table
-        calendarView = new TableView<Map<String, Object>>()
-        TableColumn<Map<String, Object>, String> titleCol = new TableColumn<>("Title")
+        calendarView = new TableView<Event>()
+        TableColumn<Event, String> titleCol = new TableColumn<>("Title")
         titleCol.setCellValueFactory(new PropertyValueFactory<>("title"))
 
         DateTimeFormatter tableDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
-        TableColumn<Map<String, Object>, LocalDateTime> startCol = new TableColumn<>("Start Time")
+        TableColumn<Event, LocalDateTime> startCol = new TableColumn<>("Start Time")
         startCol.setCellValueFactory(new PropertyValueFactory<>("startTime"))
         startCol.setCellFactory({ column ->
-            return new javafx.scene.control.TableCell<Map<String, Object>, LocalDateTime>() {
+            return new javafx.scene.control.TableCell<Event, LocalDateTime>() {
                 @Override
                 protected void updateItem(LocalDateTime item, boolean empty) {
                     super.updateItem(item, empty)
@@ -77,10 +78,10 @@ class ChatWindow extends Application {
             }
         })
 
-        TableColumn<Map<String, Object>, LocalDateTime> endCol = new TableColumn<>("End Time")
+        TableColumn<Event, LocalDateTime> endCol = new TableColumn<>("End Time")
         endCol.setCellValueFactory(new PropertyValueFactory<>("endTime"))
         endCol.setCellFactory({ column ->
-            return new javafx.scene.control.TableCell<Map<String, Object>, LocalDateTime>() {
+            return new javafx.scene.control.TableCell<Event, LocalDateTime>() {
                 @Override
                 protected void updateItem(LocalDateTime item, boolean empty) {
                     super.updateItem(item, empty)
@@ -93,7 +94,7 @@ class ChatWindow extends Application {
             }
         })
 
-        TableColumn<Map<String, Object>, String> descCol = new TableColumn<>("Description")
+        TableColumn<Event, String> descCol = new TableColumn<>("Description")
         descCol.setCellValueFactory(new PropertyValueFactory<>("description"))
 
         calendarView.getColumns().addAll(titleCol, startCol, endCol, descCol)
@@ -199,7 +200,7 @@ class ChatWindow extends Application {
     }
 
     private void refreshCalendarView() {
-        List<Map<String, Object>> allEventsFromService = calendarService.getAllEvents()
+        List<Event> allEventsFromService = calendarService.getAllEvents()
         println "ChatWindow: refreshCalendarView - Events from service: ${allEventsFromService}"
         calendarEventsList.setAll(allEventsFromService) // Use setAll to replace contents
         println "ChatWindow: refreshCalendarView - ObservableList updated. Size: ${calendarEventsList.size()}"

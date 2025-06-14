@@ -49,9 +49,11 @@ class ChatWindow extends Application {
     private GridPane calendarGrid
     private Label monthYearLabel
     private YearMonth currentYearMonth
+    private Stage primaryStage // To be used as owner for dialogs
 
     @Override
     void start(Stage primaryStage) throws Exception {
+        this.primaryStage = primaryStage // Store the primary stage
         calendarService = new CalendarService()
         aiService = new AIService(calendarService)
 
@@ -277,6 +279,7 @@ class ChatWindow extends Application {
         Dialog<Event> dialog = new Dialog<>()
         dialog.title = "Create New Event"
         dialog.headerText = "Enter the details for the new event."
+        dialog.initOwner(this.primaryStage) // Set owner
 
         // Set the button types
         ButtonType saveButtonType = new ButtonType("Save", ButtonBar.ButtonData.OK_DONE)
@@ -390,6 +393,7 @@ class ChatWindow extends Application {
             List<Event> events = calendarService.getEvents(startOfDay, endOfDay)
 
             Dialog dialog = new Dialog<>()
+            dialog.initOwner(this.primaryStage) // Set owner
             dialog.title = "Events on ${date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy"))}"
             dialog.headerText = null
             dialog.dialogPane.buttonTypes.add(ButtonType.CLOSE)
@@ -451,6 +455,7 @@ class ChatWindow extends Application {
             Dialog<Event> dialog = new Dialog<>()
             dialog.title = "Edit Event"
             dialog.headerText = "Update the details for '${eventToEdit.title}'."
+            dialog.initOwner(this.primaryStage) // Set owner
 
             ButtonType saveButtonType = new ButtonType("Save Changes", ButtonBar.ButtonData.OK_DONE)
             dialog.dialogPane.buttonTypes.addAll(saveButtonType, ButtonType.CANCEL)
@@ -501,6 +506,13 @@ class ChatWindow extends Application {
             grid.add(new Label("Description:"), 0, 5)
             grid.add(descriptionArea, 1, 5)
             GridPane.setVgrow(descriptionArea, Priority.ALWAYS)
+
+            // Diagnostic Test Field
+            TextField diagnosticTestField = new TextField()
+            diagnosticTestField.setPromptText("Can you edit this?")
+            diagnosticTestField.setEditable(true) // Explicitly set editable for safety
+            grid.add(new Label("Diagnostic Test:"), 0, 6)
+            grid.add(diagnosticTestField, 1, 6)
 
             dialog.dialogPane.content = grid
 

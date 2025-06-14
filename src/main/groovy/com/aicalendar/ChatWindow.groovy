@@ -33,6 +33,7 @@ class ChatWindow extends Application {
     private CalendarService calendarService
     private ScrollPane scrollPane // Declare scrollPane as a field
     private TableView<Map<String, Object>> calendarView
+    private ObservableList<Map<String, Object>> calendarEventsList
 
     @Override
     void start(Stage primaryStage) throws Exception {
@@ -102,6 +103,8 @@ class ChatWindow extends Application {
         endCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
         descCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
 
+        calendarEventsList = FXCollections.observableArrayList()
+        calendarView.setItems(calendarEventsList)
         refreshCalendarView()
 
         // SplitPane to hold chat and calendar
@@ -196,8 +199,11 @@ class ChatWindow extends Application {
     }
 
     private void refreshCalendarView() {
-        ObservableList<Map<String, Object>> events = FXCollections.observableArrayList(calendarService.getAllEvents())
-        calendarView.setItems(events)
+        List<Map<String, Object>> allEventsFromService = calendarService.getAllEvents()
+        println "ChatWindow: refreshCalendarView - Events from service: ${allEventsFromService}"
+        calendarEventsList.setAll(allEventsFromService) // Use setAll to replace contents
+        println "ChatWindow: refreshCalendarView - ObservableList updated. Size: ${calendarEventsList.size()}"
+        // calendarView.refresh(); // Might not be needed with setAll, let's test without first, then re-add if necessary.
     }
 
     static void main(String[] args) {

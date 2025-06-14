@@ -17,12 +17,15 @@ class CalendarService {
     }
 
     void addEvent(String title, LocalDateTime startTime, LocalDateTime endTime, String description) {
-        events.add([
+        Map<String, Object> newEvent = [
             title: title,
             startTime: startTime,
             endTime: endTime,
             description: description
-        ])
+        ]
+        events.add(newEvent)
+        println "CalendarService: Added event: ${newEvent}"
+        println "CalendarService: Total events now: ${events.size()}"
     }
 
     List<Map<String, Object>> getEvents(LocalDateTime from, LocalDateTime to) {
@@ -34,6 +37,7 @@ class CalendarService {
     }
 
     List<Map<String, Object>> getAllEvents() {
+        println "CalendarService: getAllEvents called. Returning ${events.size()} events: ${events}"
         return new ArrayList<>(events) // Return a copy
     }
 

@@ -417,8 +417,9 @@ class ChatWindow extends Application {
 
                     Button editButton = new Button("Edit")
                     editButton.onAction = { evt -> 
-                        dialog.close() // Close current dialog before opening edit dialog
-                        showEditEventDialog(event) 
+                        dialog.close() // Close current dialog
+                        // Schedule the edit dialog to open on the JavaFX Application Thread
+                        Platform.runLater(() -> showEditEventDialog(event))
                     }
                     Button deleteButton = new Button("Delete")
                     deleteButton.onAction = { evt ->

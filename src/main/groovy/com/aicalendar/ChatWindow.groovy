@@ -27,7 +27,12 @@ import java.time.format.DateTimeFormatter
 import java.time.YearMonth
 import java.time.DayOfWeek
 import javafx.scene.control.Alert
+import javafx.scene.control.ButtonBar
+import javafx.scene.control.DatePicker
+import javafx.scene.control.Dialog
 import javafx.scene.control.DialogPane
+import javafx.scene.control.ButtonType
+import java.time.format.DateTimeParseException
 import javafx.scene.layout.Region
 
 @CompileStatic
@@ -309,7 +314,7 @@ class ChatWindow extends Application {
         dialog.dialogPane.content = grid
 
         // Enable/Disable save button depending on whether title is empty
-        Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
+        javafx.scene.Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
         saveButton.disable = true
         titleField.textProperty().addListener((observable, oldValue, newValue) -> {
             saveButton.disable = newValue.trim().isEmpty()
@@ -465,7 +470,7 @@ class ChatWindow extends Application {
 
             dialog.dialogPane.content = grid
 
-            Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
+            javafx.scene.Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
             saveButton.disable = titleField.text.trim().isEmpty()
             titleField.textProperty().addListener((observable, oldValue, newValue) -> {
                 saveButton.disable = newValue.trim().isEmpty()
@@ -486,7 +491,7 @@ class ChatWindow extends Application {
                             throw new IllegalArgumentException("End date/time must be after start date/time.")
                         }
                         // Create a new event object with the original ID but new details
-                        Event updatedEvent = new Event(eventToEdit.id, titleField.getText(), startDateTime, endDateTime, descriptionArea.getText())
+                        Event updatedEvent = new Event(titleField.getText(), startDateTime, endDateTime, descriptionArea.getText(), eventToEdit.id)
                         return updatedEvent
                     } catch (DateTimeParseException e) {
                         Platform.runLater(() -> {

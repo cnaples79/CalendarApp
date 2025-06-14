@@ -184,6 +184,7 @@ class AIService {
                             }
                         } else {
                             // If aiTextResponse didn't start with "ACTION:"
+                            println "AIService: AI response is NOT an action. Raw AI Response: ${aiTextResponse}" // Log non-action response
                             return new AIResponsePayload(aiTextResponse, false, false)
                         }
                     } else {

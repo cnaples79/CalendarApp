@@ -154,8 +154,11 @@ class ChatWindow extends Application {
         // Simulate AI thinking and get response
         // In a real app, this might be an async call
         Platform.runLater {
-            String aiResponse = aiService.getAIResponse(userMessage)
-            addMessageToChat("AI", aiResponse, false)
+            AIResponsePayload payload = aiService.getAIResponse(userMessage)
+            addMessageToChat("AI", payload.textResponse, false)
+            if (payload.eventCreated) {
+                refreshCalendarView()
+            }
         }
     }
 

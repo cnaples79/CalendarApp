@@ -76,7 +76,8 @@ Do not add any extra fields to the ACTION line.
                     messages: [
                         [role: "system", content: systemMessageContent],
                         [role: "user", content: userQuery]
-                    ]
+                    ],
+                    stream: false
                 ]
                 StringEntity entity = new StringEntity(new groovy.json.JsonOutput().toJson(payload))
                 request.setEntity(entity)

@@ -95,13 +95,26 @@ class AIService {
                             return new AIResponsePayload("AI service response format unexpected (no choices): ${responseBody}", false, false)
                         }
 
-                        // Check for AI actions
-                        if (aiTextResponse.startsWith("ACTION:")) {
+                        // Regex to find ACTION command and surrounding text
+                        def actionMatcher = (aiTextResponse =~ /(?s)(.*?)(ACTION: (?:CREATE_EVENT|UPDATE_EVENT|DELETE_EVENT)[^\n]*)(.*)/)
+
+                        if (actionMatcher.find()) {
+                            String textBeforeAction = actionMatcher.group(1)?.trim()
+                            String action = actionMatcher.group(2).trim() // The full ACTION: ... command, stopping at newline
+                            String textAfterAction = actionMatcher.group(3)?.trim()
+
+                            println "AIService: Found ACTION command: ${action}"
+                            println "AIService: Text before action: '${textBeforeAction}'"
+                            println "AIService: Text after action: '${textAfterAction}'"
+
+                            String textForDisplay = textBeforeAction ?: (textAfterAction ?: "Action processed.")
+                            if (textForDisplay.isEmpty()) textForDisplay = "Action processed."
+                            if (textForDisplay.startsWith("ACTION:")) textForDisplay = "Action processed." // Avoid showing action as text
+
                             try {
-                                println "AIService: AI response is an ACTION: ${aiTextResponse}"
-                                println "AIService: Raw AI Action Response: ${aiTextResponse}"
-                                if (aiTextResponse.startsWith("ACTION: CREATE_EVENT")) {
-                                    def matcher = aiTextResponse =~ /ACTION: CREATE_EVENT title="([^"]+)" startTime="([^"]+)" endTime="([^"]+)"(?: description="([^"]*)")?/
+                                // Attempt to parse and execute the action
+                                if (action.startsWith("ACTION: CREATE_EVENT")) {
+                                    def matcher = action =~ /ACTION: CREATE_EVENT title="([^"]+)" startTime="([^"]+)" endTime="([^"]+)"(?: description="([^"]*)")?/
                                     if (matcher.find()) {
                                         String title = matcher.group(1)
                                         LocalDateTime startTime = LocalDateTime.parse(matcher.group(2), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
@@ -109,12 +122,13 @@ class AIService {
                                         String description = matcher.group(4) ?: ""
                                         Event newEvent = new Event(title, startTime, endTime, description)
                                         calendarService.addEvent(newEvent)
-                                        String confirmationText = "OK. I've added '${title}' to your calendar."
+                                        // Use the AI's conversational text if available and sensible, otherwise generate one.
+                                        String confirmationText = (textForDisplay != "Action processed.") ? textForDisplay : "OK. I've added '${title}' to your calendar."
                                         return new AIResponsePayload(confirmationText, true, false, newEvent)
                                     } else {
-                                        return new AIResponsePayload("I tried to create an event, but the format was incorrect.", false, false)
+                                        return new AIResponsePayload("I tried to create an event, but the command format was incorrect. Command: ${action}", false, false)
                                     }
-                                } else if (aiTextResponse.startsWith("ACTION: UPDATE_EVENT")) {
+                                } else if (action.startsWith("ACTION: UPDATE_EVENT")) {
                                     def matcher = aiTextResponse =~ /ACTION: UPDATE_EVENT eventId="([^"]+)"(?: title="([^"]*)")?(?: startTime="([^"]*)")?(?: endTime="([^"]*)")?(?: description="([^"]*)")?/
                                     if (matcher.find()) {
                                         String eventId = matcher.group(1)
@@ -151,8 +165,8 @@ class AIService {
                                     } else {
                                         return new AIResponsePayload("I tried to update an event, but the command format was incorrect.", false, false)
                                     }
-                                } else if (aiTextResponse.startsWith("ACTION: DELETE_EVENT")) {
-                                    def matcher = aiTextResponse =~ /ACTION: DELETE_EVENT eventId="([^"]+)"/
+                                } else if (action.startsWith("ACTION: DELETE_EVENT")) {
+                                    def matcher = action =~ /ACTION: DELETE_EVENT eventId="([^"]+)"/
                                     if (matcher.find()) {
                                         String eventId = matcher.group(1)
                                         println "AIService: DELETE - Extracted eventId: ${eventId}"
@@ -171,7 +185,8 @@ class AIService {
                                     }
                                 } else {
                                     // Unknown action or malformed
-                                    return new AIResponsePayload("I received an action I didn't understand or it was formatted incorrectly: ${aiTextResponse}", false, false)
+                                    println "AIService: Unknown or malformed action: ${action}"
+                                    return new AIResponsePayload("I received an action I didn't understand or it was formatted incorrectly: ${action}", false, false)
                                 }
                             } catch (DateTimeParseException e) {
                                 // This catch is for general DateTimeParseExceptions during action processing (e.g., from CREATE_EVENT)
@@ -183,10 +198,11 @@ class AIService {
                                 return new AIResponsePayload("Error processing AI action: ${e.getMessage()}. Original AI response: ${aiTextResponse}", false, false)
                             }
                         } else {
-                            // If aiTextResponse didn't start with "ACTION:"
-                            println "AIService: AI response is NOT an action. Raw AI Response: ${aiTextResponse}" // Log non-action response
+                            // No ACTION: command found anywhere in the response
+                            println "AIService: No ACTION command found in AI Response (full text): ${aiTextResponse}"
                             return new AIResponsePayload(aiTextResponse, false, false)
                         }
+
                     } else {
                         return new AIResponsePayload("Error communicating with AI service: ${response.getReasonPhrase()} - ${responseBody}", false, false)
                     }

@@ -34,6 +34,8 @@ import javafx.scene.control.DialogPane
 import javafx.scene.control.ButtonType
 import java.time.format.DateTimeParseException
 import javafx.scene.layout.Region
+import javafx.beans.value.ChangeListener
+import javafx.beans.value.ObservableValue
 
 @CompileStatic
 class ChatWindow extends Application {
@@ -271,6 +273,7 @@ class ChatWindow extends Application {
     }
 
     private void showCreateEventDialog() {
+        println "DEBUG: showCreateEventDialog() called"
         Dialog<Event> dialog = new Dialog<>()
         dialog.title = "Create New Event"
         dialog.headerText = "Enter the details for the new event."
@@ -316,12 +319,16 @@ class ChatWindow extends Application {
         // Enable/Disable save button depending on whether title is empty
         javafx.scene.Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
         saveButton.disable = true
-        titleField.textProperty().addListener((observable, oldValue, newValue) -> {
-            saveButton.disable = newValue.trim().isEmpty()
+        titleField.textProperty().addListener(new ChangeListener<String>() {
+            @Override
+            void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
+                saveButton.disable = newValue.trim().isEmpty()
+            }
         })
 
         // Convert the result to an event object when the save button is clicked.
         dialog.setResultConverter(dialogButton -> {
+            println "DEBUG: CreateDialog - setResultConverter called. Button: ${dialogButton?.buttonData}"
             if (dialogButton == saveButtonType) {
                 try {
                     java.time.LocalDate startDate = startDatePicker.getValue()
@@ -336,7 +343,9 @@ class ChatWindow extends Application {
                         throw new IllegalArgumentException("End date/time must be after start date/time.")
                     }
 
-                    return new Event(titleField.getText(), startDateTime, endDateTime, descriptionArea.getText())
+                    Event newEvent = new Event(titleField.getText(), startDateTime, endDateTime, descriptionArea.getText())
+                    println "DEBUG: CreateDialog - Event to be returned from converter: ${newEvent}"
+                    return newEvent
                 } catch (DateTimeParseException e) {
                     Platform.runLater(() -> {
                         Alert alert = new Alert(Alert.AlertType.ERROR)
@@ -345,6 +354,7 @@ class ChatWindow extends Application {
                         alert.contentText = e.getMessage()
                         alert.showAndWait()
                     })
+                    println "DEBUG: CreateDialog - DateTimeParseException, returning null from converter"
                     return null
                 } catch (IllegalArgumentException e) {
                      Platform.runLater(() -> {
@@ -353,15 +363,20 @@ class ChatWindow extends Application {
                         alert.headerText = e.getMessage()
                         alert.showAndWait()
                     })
+                    println "DEBUG: CreateDialog - IllegalArgumentException, returning null from converter"
                     return null
                 }
             }
+            println "DEBUG: CreateDialog - Button was not saveButtonType, returning null from converter"
             return null
         })
 
+        println "DEBUG: CreateDialog - About to call dialog.showAndWait()"
         Optional<Event> result = dialog.showAndWait()
+        println "DEBUG: CreateDialog - dialog.showAndWait() returned. Result present: ${result.isPresent()}"
 
         result.ifPresent(event -> {
+            println "DEBUG: CreateDialog - Event result is present: ${event}"
             calendarService.addEvent(event)
             populateCalendarGrid()
             println "ChatWindow: Event created via dialog: ${event}"
@@ -432,6 +447,7 @@ class ChatWindow extends Application {
         }
 
         private void showEditEventDialog(Event eventToEdit) {
+            println "DEBUG: showEditEventDialog() called for event: ${eventToEdit}"
             Dialog<Event> dialog = new Dialog<>()
             dialog.title = "Edit Event"
             dialog.headerText = "Update the details for '${eventToEdit.title}'."
@@ -472,11 +488,15 @@ class ChatWindow extends Application {
 
             javafx.scene.Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
             saveButton.disable = titleField.text.trim().isEmpty()
-            titleField.textProperty().addListener((observable, oldValue, newValue) -> {
-                saveButton.disable = newValue.trim().isEmpty()
+            titleField.textProperty().addListener(new ChangeListener<String>() {
+                @Override
+                void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
+                    saveButton.disable = newValue.trim().isEmpty()
+                }
             })
 
             dialog.setResultConverter(dialogButton -> {
+                println "DEBUG: EditDialog - setResultConverter called. Button: ${dialogButton?.buttonData}"
                 if (dialogButton == saveButtonType) {
                     try {
                         java.time.LocalDate startDate = startDatePicker.getValue()
@@ -492,6 +512,7 @@ class ChatWindow extends Application {
                         }
                         // Create a new event object with the original ID but new details
                         Event updatedEvent = new Event(titleField.getText(), startDateTime, endDateTime, descriptionArea.getText(), eventToEdit.id)
+                        println "DEBUG: EditDialog - Event to be returned from converter: ${updatedEvent}"
                         return updatedEvent
                     } catch (DateTimeParseException e) {
                         Platform.runLater(() -> {
@@ -501,6 +522,7 @@ class ChatWindow extends Application {
                             alert.contentText = e.getMessage()
                             alert.showAndWait()
                         })
+                        println "DEBUG: EditDialog - DateTimeParseException, returning null from converter"
                         return null
                     } catch (IllegalArgumentException e) {
                          Platform.runLater(() -> {
@@ -509,15 +531,20 @@ class ChatWindow extends Application {
                             alert.headerText = e.getMessage()
                             alert.showAndWait()
                         })
+                        println "DEBUG: EditDialog - IllegalArgumentException, returning null from converter"
                         return null
                     }
                 }
+                println "DEBUG: EditDialog - Button was not saveButtonType, returning null from converter"
                 return null
             })
 
+            println "DEBUG: EditDialog - About to call dialog.showAndWait()"
             Optional<Event> result = dialog.showAndWait()
+            println "DEBUG: EditDialog - dialog.showAndWait() returned. Result present: ${result.isPresent()}"
 
             result.ifPresent(updatedEventData -> {
+                println "DEBUG: EditDialog - Event result is present: ${updatedEventData}"
                 boolean success = calendarService.updateEvent(eventToEdit.id, updatedEventData)
                 if (success) {
                     populateCalendarGrid()

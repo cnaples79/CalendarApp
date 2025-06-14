@@ -15,15 +15,20 @@ import javafx.scene.layout.BorderPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.VBox
 import javafx.stage.Stage
-import javafx.scene.control.TableView
-import javafx.scene.control.TableColumn
-import javafx.scene.control.cell.PropertyValueFactory
+import javafx.scene.layout.GridPane
+import javafx.scene.layout.ColumnConstraints
+import javafx.scene.layout.Priority
 import javafx.scene.control.SplitPane
 import javafx.collections.FXCollections
 import javafx.collections.ObservableList
 import java.time.LocalDateTime
 import com.aicalendar.Event
 import java.time.format.DateTimeFormatter
+import java.time.YearMonth
+import java.time.DayOfWeek
+import javafx.scene.control.Alert
+import javafx.scene.control.DialogPane
+import javafx.scene.layout.Region
 
 @CompileStatic
 class ChatWindow extends Application {
@@ -33,8 +38,10 @@ class ChatWindow extends Application {
     private AIService aiService
     private CalendarService calendarService
     private ScrollPane scrollPane // Declare scrollPane as a field
-    private TableView<Event> calendarView
-    private ObservableList<Event> calendarEventsList
+    // Fields for the new monthly calendar view
+    private GridPane calendarGrid
+    private Label monthYearLabel
+    private YearMonth currentYearMonth
 
     @Override
     void start(Stage primaryStage) throws Exception {
@@ -55,62 +62,43 @@ class ChatWindow extends Application {
         scrollPane.fitToWidth = true
         scrollPane.hbarPolicy = ScrollPane.ScrollBarPolicy.NEVER
         scrollPane.vbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
-        // Calendar View Table
-        calendarView = new TableView<Event>()
-        TableColumn<Event, String> titleCol = new TableColumn<>("Title")
-        titleCol.setCellValueFactory(new PropertyValueFactory<>("title"))
 
-        DateTimeFormatter tableDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+        // --- New Monthly Calendar View Setup ---
+        currentYearMonth = YearMonth.now()
 
-        TableColumn<Event, LocalDateTime> startCol = new TableColumn<>("Start Time")
-        startCol.setCellValueFactory(new PropertyValueFactory<>("startTime"))
-        startCol.setCellFactory({ column ->
-            return new javafx.scene.control.TableCell<Event, LocalDateTime>() {
-                @Override
-                protected void updateItem(LocalDateTime item, boolean empty) {
-                    super.updateItem(item, empty)
-                    if (item == null || empty) {
-                        setText(null)
-                    } else {
-                        setText(item.format(tableDateTimeFormatter))
-                    }
-                }
-            }
-        })
+        monthYearLabel = new Label()
+        monthYearLabel.styleClass.add("month-year-label")
 
-        TableColumn<Event, LocalDateTime> endCol = new TableColumn<>("End Time")
-        endCol.setCellValueFactory(new PropertyValueFactory<>("endTime"))
-        endCol.setCellFactory({ column ->
-            return new javafx.scene.control.TableCell<Event, LocalDateTime>() {
-                @Override
-                protected void updateItem(LocalDateTime item, boolean empty) {
-                    super.updateItem(item, empty)
-                    if (item == null || empty) {
-                        setText(null)
-                    } else {
-                        setText(item.format(tableDateTimeFormatter))
-                    }
-                }
-            }
-        })
+        Button prevMonthButton = new Button("< Prev")
+        prevMonthButton.onAction = { event -> changeMonth(-1) }
+        Button nextMonthButton = new Button("Next >")
+        nextMonthButton.onAction = { event -> changeMonth(1) }
 
-        TableColumn<Event, String> descCol = new TableColumn<>("Description")
-        descCol.setCellValueFactory(new PropertyValueFactory<>("description"))
+        HBox monthNavigation = new HBox(10, prevMonthButton, monthYearLabel, nextMonthButton)
+        monthNavigation.alignment = Pos.CENTER
+        monthNavigation.padding = new Insets(5)
 
-        calendarView.getColumns().addAll(titleCol, startCol, endCol, descCol)
-        // Make columns take up available width
-        titleCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
-        startCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
-        endCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
-        descCol.prefWidthProperty().bind(calendarView.widthProperty().multiply(0.25d))
+        calendarGrid = new GridPane()
+        calendarGrid.styleClass.add("calendar-grid")
+        calendarGrid.hgap = 2
+        calendarGrid.vgap = 2
+        // Make columns equally sized
+        for (int i = 0; i < 7; i++) {
+            ColumnConstraints colConst = new ColumnConstraints()
+            colConst.setPercentWidth((double)(100.0 / 7))
+            calendarGrid.getColumnConstraints().add(colConst)
+        }
 
-        calendarEventsList = FXCollections.observableArrayList()
-        calendarView.setItems(calendarEventsList)
-        refreshCalendarView()
+        VBox calendarLayout = new VBox(10, monthNavigation, createDayOfWeekHeader(), calendarGrid)
+        calendarLayout.padding = new Insets(10)
+        calendarLayout.styleClass.add("calendar-layout")
 
-        // SplitPane to hold chat and calendar
+        populateCalendarGrid()
+        // --- End New Monthly Calendar View Setup ---
+
+        // SplitPane to hold chat and new calendar layout
         SplitPane splitPane = new SplitPane()
-        splitPane.getItems().addAll(scrollPane, calendarView)
+        splitPane.getItems().addAll(scrollPane, calendarLayout) // Use calendarLayout instead of calendarView
         splitPane.setDividerPositions(0.5d) // Initial 50/50 split
 
         root.center = splitPane
@@ -161,7 +149,7 @@ class ChatWindow extends Application {
             AIResponsePayload payload = aiService.getAIResponse(userMessage)
             addMessageToChat("AI", payload.textResponse, false)
             if (payload.eventCreated) {
-                refreshCalendarView()
+                populateCalendarGrid() // Update to call the new method
             }
         }
     }
@@ -199,12 +187,117 @@ class ChatWindow extends Application {
         }
     }
 
-    private void refreshCalendarView() {
-        List<Event> allEventsFromService = calendarService.getAllEvents()
-        println "ChatWindow: refreshCalendarView - Events from service: ${allEventsFromService}"
-        calendarEventsList.setAll(allEventsFromService) // Use setAll to replace contents
-        println "ChatWindow: refreshCalendarView - ObservableList updated. Size: ${calendarEventsList.size()}"
-        // calendarView.refresh(); // Might not be needed with setAll, let's test without first, then re-add if necessary.
+    private HBox createDayOfWeekHeader() {
+        HBox headerRow = new HBox()
+        headerRow.styleClass.add("day-of-week-header")
+        String[] dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        for (String dayName : dayNames) {
+            Label dayLabel = new Label(dayName)
+            dayLabel.setMaxWidth(Double.MAX_VALUE)
+            HBox.setHgrow(dayLabel, Priority.ALWAYS)
+            dayLabel.alignment = Pos.CENTER
+            dayLabel.styleClass.add("day-header-label")
+            headerRow.getChildren().add(dayLabel)
+        }
+        return headerRow
+    }
+
+    private void changeMonth(long amount) {
+        currentYearMonth = currentYearMonth.plusMonths(amount)
+        populateCalendarGrid()
+    }
+
+    private void populateCalendarGrid() {
+        monthYearLabel.text = currentYearMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+        calendarGrid.getChildren().clear() // Clear previous month's days
+
+        List<Event> allEvents = calendarService.getAllEvents() // Get all events for potential display
+        println "ChatWindow: populateCalendarGrid - Current Month: ${currentYearMonth}, Events: ${allEvents.size()}"
+
+        java.time.LocalDate firstOfMonth = currentYearMonth.atDay(1)
+        int dayOfWeekOfFirst = firstOfMonth.getDayOfWeek().getValue() % 7 // SUN=0, MON=1 .. SAT=6
+        int daysInMonth = currentYearMonth.lengthOfMonth()
+
+        int row = 0
+        int col = dayOfWeekOfFirst
+
+        for (int day = 1; day <= daysInMonth; day++) {
+            VBox dayCell = new VBox()
+            dayCell.alignment = Pos.TOP_CENTER
+            dayCell.styleClass.add("calendar-day-cell")
+            // Add padding inside the cell
+            dayCell.setPadding(new Insets(5));
+
+            Label dayLabel = new Label(String.valueOf(day))
+            dayLabel.styleClass.add("day-number-label")
+            dayCell.getChildren().add(dayLabel)
+
+            final java.time.LocalDate cellDate = currentYearMonth.atDay(day);
+            List<Event> eventsOnThisDay = allEvents.findAll { event ->
+                event.startTime.toLocalDate().isEqual(cellDate)
+            }
+
+            if (!eventsOnThisDay.isEmpty()) {
+                Label eventIndicator = new Label("(${eventsOnThisDay.size()} event${eventsOnThisDay.size() > 1 ? 's' : ''})")
+                eventIndicator.styleClass.add("event-indicator-label")
+                dayCell.getChildren().add(eventIndicator)
+            }
+
+            dayCell.setOnMouseClicked { event ->
+                showEventsForDay(cellDate)
+            }
+            // Add a hover effect to indicate clickable cells
+            dayCell.setOnMouseEntered { event -> dayCell.style = "-fx-background-color: #e0e0e0;" }
+            dayCell.setOnMouseExited { event -> dayCell.style = "" } 
+
+            calendarGrid.add(dayCell, col, row)
+
+            col++
+            if (col > 6) {
+                col = 0
+                row++
+            }
+        }
+        println "ChatWindow: Calendar grid populated for ${currentYearMonth}"
+    }
+
+    private void showEventsForDay(java.time.LocalDate date) {
+        LocalDateTime startOfDay = date.atStartOfDay()
+        LocalDateTime endOfDay = date.atTime(23, 59, 59)
+        List<Event> events = calendarService.getEvents(startOfDay, endOfDay)
+
+        Alert alert = new Alert(Alert.AlertType.INFORMATION)
+        alert.title = "Events for ${date.format(DateTimeFormatter.ofPattern("MMMM d, yyyy"))}"
+        alert.headerText = null // No header
+
+        if (events.isEmpty()) {
+            alert.contentText = "No events scheduled for this day."
+        } else {
+            StringBuilder content = new StringBuilder()
+            events.each { event ->
+                content.append("${event.title}\n")
+                content.append("  Start: ${event.startTime.format(DateTimeFormatter.ofPattern("HH:mm"))}\n")
+                content.append("  End:   ${event.endTime.format(DateTimeFormatter.ofPattern("HH:mm"))}\n")
+                if (event.description != null && !event.description.isEmpty()) {
+                    content.append("  Desc:  ${event.description}\n")
+                }
+                content.append("\n")
+            }
+            alert.contentText = content.toString()
+        }
+        // Make dialog resizable and wrap text
+        DialogPane dialogPane = alert.getDialogPane();
+        dialogPane.setPrefWidth(400); // Set a preferred width
+        dialogPane.setPrefHeight(300); // Set a preferred height
+        // Access the content TextArea to enable wrapping (requires lookup)
+        TextArea contentTextArea = (TextArea) dialogPane.lookup(".content.label");
+        if (contentTextArea != null) {
+            contentTextArea.setWrapText(true);
+            contentTextArea.setEditable(false);
+            contentTextArea.setPrefHeight(Region.USE_COMPUTED_SIZE);
+        }
+
+        alert.showAndWait()
     }
 
     static void main(String[] args) {

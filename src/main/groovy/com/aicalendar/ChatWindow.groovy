@@ -16,6 +16,7 @@ import javafx.scene.layout.HBox
 import javafx.scene.layout.VBox
 import javafx.stage.Stage
 import javafx.scene.layout.GridPane
+import javafx.scene.layout.Pane // Added import
 import javafx.scene.layout.ColumnConstraints
 import javafx.scene.layout.Priority
 import javafx.scene.control.SplitPane
@@ -109,26 +110,52 @@ class ChatWindow extends Application {
         // --- End New Monthly Calendar View Setup ---
 
         // SplitPane to hold chat and new calendar layout
-        SplitPane splitPane = new SplitPane()
-        splitPane.getItems().addAll(scrollPane, calendarLayout) // Use calendarLayout instead of calendarView
-        splitPane.setDividerPositions(0.5d) // Initial 50/50 split
-
-        root.center = splitPane
-
-        // Input area
-        inputField = new TextField()
+        // Input area setup
+        inputField = new TextField() // Initialize inputField
         inputField.promptText = "Ask your AI assistant about your calendar..."
         inputField.onAction = { event -> sendMessage() }
 
-        Button sendButton = new Button("Send")
+        Button sendButton = new Button("Send") // Initialize sendButton
         sendButton.onAction = { event -> sendMessage() }
 
+        HBox.setHgrow(inputField, Priority.ALWAYS)
         HBox inputArea = new HBox(10, inputField, sendButton)
         inputArea.padding = new Insets(10)
         inputArea.alignment = Pos.CENTER
-        root.bottom = inputArea
 
-        Scene scene = new Scene(root, 1200, 700) // Increased width for calendar view
+        // Left side: Chat area (messages + input)
+        VBox chatArea = new VBox(scrollPane, inputArea)
+        VBox.setVgrow(scrollPane, Priority.ALWAYS)
+        chatArea.styleClass.add("chat-area")
+
+        // Right side: Calendar and Timeline Area
+        // Placeholder for Daily Timeline View
+        Pane dailyTimelineContentPane = new Pane()
+        dailyTimelineContentPane.style = "-fx-background-color: #e9e9e9; -fx-border-color: #cccccc; -fx-border-width: 1px;" // Placeholder style
+        dailyTimelineContentPane.setMinHeight(150) // Example height for timeline
+        ScrollPane dailyTimelineScrollPane = new ScrollPane(dailyTimelineContentPane)
+        dailyTimelineScrollPane.fitToWidth = true
+        dailyTimelineScrollPane.hbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
+        dailyTimelineScrollPane.vbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
+        dailyTimelineScrollPane.styleClass.add("daily-timeline-scrollpane")
+
+        // Calendar layout (already created as calendarLayout)
+        // SplitPane for Calendar (top) and Timeline (bottom) on the right side
+        SplitPane calendarAndTimelineSplit = new SplitPane()
+        calendarAndTimelineSplit.setOrientation(javafx.geometry.Orientation.VERTICAL)
+        calendarAndTimelineSplit.getItems().addAll(calendarLayout, dailyTimelineScrollPane)
+        calendarAndTimelineSplit.setDividerPositions(0.75d) // Calendar takes 75% of vertical space on the right
+        calendarAndTimelineSplit.styleClass.add("calendar-timeline-split")
+
+        // Main horizontal SplitPane: Chat (left) | Calendar & Timeline (right)
+        SplitPane mainHorizontalSplit = new SplitPane()
+        mainHorizontalSplit.getItems().addAll(chatArea, calendarAndTimelineSplit)
+        mainHorizontalSplit.setDividerPositions(0.35d) // Chat takes 35% of width, giving more space to calendar/timeline
+        mainHorizontalSplit.styleClass.add("main-horizontal-split")
+
+        root.center = mainHorizontalSplit
+
+        Scene scene = new Scene(root, 1500, 850) // Increased overall size for new layout
         try {
             String cssPath = getClass().getResource("/com/aicalendar/ui/styles.css")?.toExternalForm()
             if (cssPath != null) {
@@ -238,27 +265,57 @@ class ChatWindow extends Application {
             VBox dayCell = new VBox()
             dayCell.alignment = Pos.TOP_CENTER
             dayCell.styleClass.add("calendar-day-cell")
-            // Add padding inside the cell
-            dayCell.setPadding(new Insets(5));
+            dayCell.setPadding(new Insets(3)) // Reduced padding slightly for more content space
+            dayCell.setMinHeight(120) // Make cells taller
+            // minWidth will be effectively handled by ColumnConstraints on GridPane
 
             Label dayLabel = new Label(String.valueOf(day))
             dayLabel.styleClass.add("day-number-label")
-            dayCell.getChildren().add(dayLabel)
+            
+            VBox dayContentContainer = new VBox(2) // Small spacing between items in cell
+            dayContentContainer.alignment = Pos.TOP_LEFT
+            dayContentContainer.getChildren().add(dayLabel)
 
             final java.time.LocalDate cellDate = currentYearMonth.atDay(day);
             List<Event> eventsOnThisDay = allEvents.findAll { event ->
                 event.startTime.toLocalDate().isEqual(cellDate)
-            }
+            }.sort { it.startTime } // Sort events by start time
 
-            if (!eventsOnThisDay.isEmpty()) {
-                Label eventIndicator = new Label("(${eventsOnThisDay.size()} event${eventsOnThisDay.size() > 1 ? 's' : ''})")
-                eventIndicator.styleClass.add("event-indicator-label")
-                dayCell.getChildren().add(eventIndicator)
+            ScrollPane eventsScrollPane = new ScrollPane() // Scroll for events if they overflow cell
+            VBox eventsVBox = new VBox(2) // VBox for event labels inside scrollpane
+            eventsVBox.setPadding(new Insets(2,0,0,0)) // Padding above events list
+            
+            int maxEventsToShowInCell = 3; // Arbitrary limit, could be dynamic based on cell height
+            if (!eventsOnThisDay.isEmpty()){
+                for (int i = 0; i < eventsOnThisDay.size(); i++) {
+                    Event event = eventsOnThisDay[i]
+                    String eventText = String.format("%s %s", 
+                                                   event.startTime.format(DateTimeFormatter.ofPattern("HH:mm")),
+                                                   event.title)
+                    Label eventLabel = new Label(eventText)
+                    eventLabel.styleClass.add("event-label-in-cell")
+                    eventLabel.setWrapText(false) // Keep it concise, full title on hover/dialog
+                    eventLabel.setEllipsisString("...") // Add ellipsis if text is too long
+                    eventLabel.setMaxWidth(Double.MAX_VALUE) // Allow label to take available width for ellipsis
+                    eventsVBox.getChildren().add(eventLabel)
+                    // Tooltip for full description will be added later
+                }
             }
+            eventsScrollPane.setContent(eventsVBox)
+            eventsScrollPane.setFitToWidth(true)
+            eventsScrollPane.setFitToHeight(true) // Try to fit height, but VBox might grow
+            eventsScrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER)
+            eventsScrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED) // Show scrollbar if many events
+            eventsScrollPane.styleClass.add("day-cell-events-scrollpane")
 
-            dayCell.setOnMouseClicked { event ->
+            VBox.setVgrow(eventsScrollPane, Priority.ALWAYS) // Allow scrollpane to take available vertical space
+            dayContentContainer.getChildren().add(eventsScrollPane)
+            dayCell.getChildren().add(dayContentContainer)
+            VBox.setVgrow(dayContentContainer, Priority.ALWAYS)
+
+            dayCell.setOnMouseClicked { e ->
                 println "ChatWindow: Day cell clicked for date: ${cellDate}"
-                showEventsForDay(cellDate)
+                showEventsForDay(cellDate) // This will show all events in a dialog
             }
             // Add a hover effect to indicate clickable cells
             dayCell.setOnMouseEntered { event -> dayCell.style = "-fx-background-color: #e0e0e0;" }

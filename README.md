@@ -25,6 +25,7 @@ A fully functional AI-powered calendar application built with Groovy and JavaFX 
 
 ### User Interface
 - **Chat Interface**: Dedicated chat window for AI interactions
+- **Daily Timeline View**: Scrollable hourly view of events for a selected day, with tooltips for full event details.
 - **Modern Design**: Clean, intuitive interface with proper dialog management
 - **Event Details**: Rich event information display with titles, times, and descriptions
 
@@ -41,7 +42,8 @@ A fully functional AI-powered calendar application built with Groovy and JavaFX 
 src/main/groovy/com/aicalendar/
 ├── App.groovy              # Main application entry point
 ├── CalendarService.groovy  # Core calendar data management
-├── ChatWindow.groovy       # Main UI with calendar grid and chat
+├── ChatWindow.groovy       # Main UI with calendar grid, chat, and timeline integration
+├── DailyTimelineView.groovy # UI component for the daily timeline
 ├── AIService.groovy        # AI integration and command parsing
 ├── Event.groovy           # Event data model (POGO)
 └── AIResponsePayload.groovy # AI response wrapper

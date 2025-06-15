@@ -37,6 +37,8 @@ import java.time.format.DateTimeParseException
 import javafx.scene.layout.Region
 import javafx.beans.value.ChangeListener
 import javafx.beans.value.ObservableValue
+import com.aicalendar.DailyTimelineView // Added import
+import java.time.LocalDate // Added missing import
 
 @CompileStatic
 class ChatWindow extends Application {
@@ -51,6 +53,7 @@ class ChatWindow extends Application {
     private Label monthYearLabel
     private YearMonth currentYearMonth
     private Stage primaryStage // To be used as owner for dialogs
+    private DailyTimelineView dailyTimelineView // Added field
 
     @Override
     void start(Stage primaryStage) throws Exception {
@@ -107,6 +110,7 @@ class ChatWindow extends Application {
         calendarLayout.styleClass.add("calendar-layout")
 
         populateCalendarGrid()
+        updateTimelineForDate(LocalDate.now()) // Initial timeline update for today
         // --- End New Monthly Calendar View Setup ---
 
         // SplitPane to hold chat and new calendar layout
@@ -129,15 +133,15 @@ class ChatWindow extends Application {
         chatArea.styleClass.add("chat-area")
 
         // Right side: Calendar and Timeline Area
-        // Placeholder for Daily Timeline View
-        Pane dailyTimelineContentPane = new Pane()
-        dailyTimelineContentPane.style = "-fx-background-color: #e9e9e9; -fx-border-color: #cccccc; -fx-border-width: 1px;" // Placeholder style
-        dailyTimelineContentPane.setMinHeight(150) // Example height for timeline
-        ScrollPane dailyTimelineScrollPane = new ScrollPane(dailyTimelineContentPane)
+        // Daily Timeline View
+        dailyTimelineView = new DailyTimelineView() // Instantiate DailyTimelineView
+        ScrollPane dailyTimelineScrollPane = new ScrollPane(dailyTimelineView)
         dailyTimelineScrollPane.fitToWidth = true
         dailyTimelineScrollPane.hbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
         dailyTimelineScrollPane.vbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
         dailyTimelineScrollPane.styleClass.add("daily-timeline-scrollpane")
+        // Ensure the timeline view itself can grow within the scrollpane
+        dailyTimelineView.prefWidthProperty().bind(dailyTimelineScrollPane.widthProperty().subtract(15)) // Bind width, account for scrollbar
 
         // Calendar layout (already created as calendarLayout)
         // SplitPane for Calendar (top) and Timeline (bottom) on the right side
@@ -190,6 +194,22 @@ class ChatWindow extends Application {
             println "ChatWindow.sendMessage: AIResponsePayload - eventCreated=${payload.eventCreated}, eventModified=${payload.eventModified}" // Log flags
             if (payload.eventCreated || payload.eventModified) {
                 populateCalendarGrid() // Refresh calendar if event created or modified
+                // Update timeline, try to get date from payload or use current view
+                LocalDate dateToUpdate = payload.event?.startTime?.toLocalDate() ?: currentYearMonth.atDay(1) // Fallback
+                if (payload.event == null && payload.eventModified) {
+                    // If event was deleted or modified and we don't have its direct date,
+                    // try to find it or refresh for a sensible default (e.g., today or current calendar view)
+                    // For now, let's assume a general refresh might be needed or we use a default.
+                    // This part might need more sophisticated logic if an event is deleted from a future/past month not in view.
+                    // A simple approach: if an event was modified, and we have it, use its date.
+                    // If an event was deleted, we might not have its date easily from payload.
+                    // For now, let's just update for 'today' if we don't have a specific date from the payload.
+                    // A better approach for deletions would be to refresh timeline for the day that was active or clicked.
+                    // This logic is complex if the AI deletes an event not currently shown on timeline.
+                    // For now, if event is null (e.g. deletion), refresh timeline for today or current view.
+                    dateToUpdate = dailyTimelineView.getCurrentDate() ?: LocalDate.now() 
+                }
+                updateTimelineForDate(dateToUpdate)
             }
         }
     }
@@ -316,6 +336,7 @@ class ChatWindow extends Application {
             dayCell.setOnMouseClicked { e ->
                 println "ChatWindow: Day cell clicked for date: ${cellDate}"
                 showEventsForDay(cellDate) // This will show all events in a dialog
+                updateTimelineForDate(cellDate) // Update timeline for the clicked day
             }
             // Add a hover effect to indicate clickable cells
             dayCell.setOnMouseEntered { event -> dayCell.style = "-fx-background-color: #e0e0e0;" }
@@ -440,6 +461,7 @@ class ChatWindow extends Application {
             println "DEBUG: CreateDialog - Event result is present: ${event}"
             calendarService.addEvent(event)
             populateCalendarGrid()
+            updateTimelineForDate(event.startTime.toLocalDate()) // Update timeline for the day of the new event
             println "ChatWindow: Event created via dialog: ${event}"
         })
     }
@@ -485,12 +507,21 @@ class ChatWindow extends Application {
                         confirmDeleteAlert.title = "Confirm Deletion"
                         confirmDeleteAlert.headerText = "Delete Event: ${event.title}?"
                         confirmDeleteAlert.contentText = "Are you sure you want to delete this event? This action cannot be undone."
+                        confirmDeleteAlert.initOwner(dialog.dialogPane.scene.window)
                         Optional<ButtonType> result = confirmDeleteAlert.showAndWait()
                         if (result.isPresent() && result.get() == ButtonType.OK) {
+                            LocalDate deletedEventDate = event.startTime.toLocalDate()
                             calendarService.deleteEvent(event.id)
                             populateCalendarGrid()
+                            updateTimelineForDate(deletedEventDate) // Refresh timeline
                             dialog.close() // Close the events list dialog
-                            // Optionally, show a notification that event was deleted or re-open day view
+
+                            Alert confirmation = new Alert(Alert.AlertType.INFORMATION)
+                            confirmation.initOwner(primaryStage)
+                            confirmation.title = "Event Deleted"
+                            confirmation.headerText = null
+                            confirmation.contentText = "The event '${event.title}' has been deleted."
+                            confirmation.showAndWait()
                         }
                     }
                     HBox buttonBox = new HBox(10, editButton, deleteButton)
@@ -509,145 +540,150 @@ class ChatWindow extends Application {
             dialog.showAndWait()
         }
 
-        private void showEditEventDialog(Event eventToEdit) {
-            println "DEBUG: showEditEventDialog() called for event: ${eventToEdit}"
-            Dialog<Event> dialog = new Dialog<>()
-            dialog.title = "Edit Event"
-            dialog.headerText = "Update the details for '${eventToEdit.title}'."
-            dialog.initOwner(this.primaryStage) // Set owner
+    private void showEditEventDialog(Event eventToEdit) {
+        println "DEBUG: showEditEventDialog() called for event: ${eventToEdit}"
+        Dialog<Event> dialog = new Dialog<>()
+        dialog.title = "Edit Event"
+        dialog.headerText = "Update the details for '${eventToEdit.title}'."
+        dialog.initOwner(this.primaryStage) // Set owner
 
-            ButtonType saveButtonType = new ButtonType("Save Changes", ButtonBar.ButtonData.OK_DONE)
-            dialog.dialogPane.buttonTypes.addAll(saveButtonType, ButtonType.CANCEL)
+        ButtonType saveButtonType = new ButtonType("Save Changes", ButtonBar.ButtonData.OK_DONE)
+        dialog.dialogPane.buttonTypes.addAll(saveButtonType, ButtonType.CANCEL)
 
-            GridPane grid = new GridPane()
-            grid.hgap = 10
-            grid.vgap = 10
-            grid.padding = new Insets(20, 150, 10, 10)
+        GridPane grid = new GridPane()
+        grid.hgap = 10
+        grid.vgap = 10
+        grid.padding = new Insets(20, 150, 10, 10)
 
+        TextField titleField = new TextField()
+        titleField.setText(eventToEdit.title)
+        titleField.setEditable(true)
 
-            TextField titleField = new TextField()
-            titleField.setText(eventToEdit.title)
-            titleField.setEditable(true)
+        DatePicker startDatePicker = new DatePicker()
+        startDatePicker.setValue(eventToEdit.startTime.toLocalDate())
+        startDatePicker.setEditable(true)
 
-            DatePicker startDatePicker = new DatePicker()
-            startDatePicker.setValue(eventToEdit.startTime.toLocalDate())
-            startDatePicker.setEditable(true)
+        TextField startTimeField = new TextField()
+        startTimeField.setText(eventToEdit.startTime.format(DateTimeFormatter.ofPattern("HH:mm")))
+        startTimeField.promptText = "HH:mm"
+        startTimeField.setEditable(true)
 
-            TextField startTimeField = new TextField()
-            startTimeField.setText(eventToEdit.startTime.format(DateTimeFormatter.ofPattern("HH:mm")))
-            startTimeField.promptText = "HH:mm"
-            startTimeField.setEditable(true)
+        DatePicker endDatePicker = new DatePicker()
+        endDatePicker.setValue(eventToEdit.endTime.toLocalDate())
+        endDatePicker.setEditable(true)
 
-            DatePicker endDatePicker = new DatePicker()
-            endDatePicker.setValue(eventToEdit.endTime.toLocalDate())
-            endDatePicker.setEditable(true)
+        TextField endTimeField = new TextField()
+        endTimeField.setText(eventToEdit.endTime.format(DateTimeFormatter.ofPattern("HH:mm")))
+        endTimeField.promptText = "HH:mm"
+        endTimeField.setEditable(true)
 
-            TextField endTimeField = new TextField()
-            endTimeField.setText(eventToEdit.endTime.format(DateTimeFormatter.ofPattern("HH:mm")))
-            endTimeField.promptText = "HH:mm"
-            endTimeField.setEditable(true)
+        TextArea descriptionArea = new TextArea()
+        descriptionArea.setText(eventToEdit.description)
+        descriptionArea.setWrapText(true)
+        descriptionArea.setEditable(true)
 
-            TextArea descriptionArea = new TextArea()
-            descriptionArea.setText(eventToEdit.description)
-            descriptionArea.setWrapText(true)
-            descriptionArea.setEditable(true)
+        grid.add(new Label("Title:"), 0, 0)
+        grid.add(titleField, 1, 0)
+        grid.add(new Label("Start Date:"), 0, 1)
+        grid.add(startDatePicker, 1, 1)
+        grid.add(new Label("Start Time (HH:mm):"), 0, 2)
+        grid.add(startTimeField, 1, 2)
+        grid.add(new Label("End Date:"), 0, 3)
+        grid.add(endDatePicker, 1, 3)
+        grid.add(new Label("End Time (HH:mm):"), 0, 4)
+        grid.add(endTimeField, 1, 4)
+        grid.add(new Label("Description:"), 0, 5)
+        grid.add(descriptionArea, 1, 5)
+        GridPane.setVgrow(descriptionArea, Priority.ALWAYS)
 
-            grid.add(new Label("Title:"), 0, 0)
-            grid.add(titleField, 1, 0)
-            grid.add(new Label("Start Date:"), 0, 1)
-            grid.add(startDatePicker, 1, 1)
-            grid.add(new Label("Start Time (HH:mm):"), 0, 2)
-            grid.add(startTimeField, 1, 2)
-            grid.add(new Label("End Date:"), 0, 3)
-            grid.add(endDatePicker, 1, 3)
-            grid.add(new Label("End Time (HH:mm):"), 0, 4)
-            grid.add(endTimeField, 1, 4)
-            grid.add(new Label("Description:"), 0, 5)
-            grid.add(descriptionArea, 1, 5)
-            GridPane.setVgrow(descriptionArea, Priority.ALWAYS)
+        dialog.dialogPane.content = grid
 
-            // Diagnostic Test Field
-            TextField diagnosticTestField = new TextField()
-            diagnosticTestField.setPromptText("Can you edit this?")
-            diagnosticTestField.setEditable(true) // Explicitly set editable for safety
-            grid.add(new Label("Diagnostic Test:"), 0, 6)
-            grid.add(diagnosticTestField, 1, 6)
+        javafx.scene.Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
+        saveButton.disable = titleField.text.trim().isEmpty()
+        titleField.textProperty().addListener(new ChangeListener<String>() {
+            @Override
+            void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
+                saveButton.disable = newValue.trim().isEmpty()
+            }
+        })
 
-            dialog.dialogPane.content = grid
+        dialog.setResultConverter(dialogButton -> {
+            println "DEBUG: EditDialog - setResultConverter called. Button: ${dialogButton?.buttonData}"
+            if (dialogButton == saveButtonType) {
+                try {
+                    java.time.LocalDate startDate = startDatePicker.getValue()
+                    java.time.LocalTime startTime = java.time.LocalTime.parse(startTimeField.getText(), DateTimeFormatter.ofPattern("HH:mm"))
+                    java.time.LocalDate endDate = endDatePicker.getValue()
+                    java.time.LocalTime endTime = java.time.LocalTime.parse(endTimeField.getText(), DateTimeFormatter.ofPattern("HH:mm"))
 
-            javafx.scene.Node saveButton = dialog.dialogPane.lookupButton(saveButtonType)
-            saveButton.disable = titleField.text.trim().isEmpty()
-            titleField.textProperty().addListener(new ChangeListener<String>() {
-                @Override
-                void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
-                    saveButton.disable = newValue.trim().isEmpty()
-                }
-            })
+                    LocalDateTime startDateTime = LocalDateTime.of(startDate, startTime)
+                    LocalDateTime endDateTime = LocalDateTime.of(endDate, endTime)
 
-            dialog.setResultConverter(dialogButton -> {
-                println "DEBUG: EditDialog - setResultConverter called. Button: ${dialogButton?.buttonData}"
-                if (dialogButton == saveButtonType) {
-                    try {
-                        java.time.LocalDate startDate = startDatePicker.getValue()
-                        java.time.LocalTime startTime = java.time.LocalTime.parse(startTimeField.getText(), DateTimeFormatter.ofPattern("HH:mm"))
-                        java.time.LocalDate endDate = endDatePicker.getValue()
-                        java.time.LocalTime endTime = java.time.LocalTime.parse(endTimeField.getText(), DateTimeFormatter.ofPattern("HH:mm"))
-
-                        LocalDateTime startDateTime = LocalDateTime.of(startDate, startTime)
-                        LocalDateTime endDateTime = LocalDateTime.of(endDate, endTime)
-
-                        if (endDateTime.isBefore(startDateTime)) {
-                            throw new IllegalArgumentException("End date/time must be after start date/time.")
-                        }
-                        // Create a new event object with the original ID but new details
-                        Event updatedEvent = new Event(titleField.getText(), startDateTime, endDateTime, descriptionArea.getText(), eventToEdit.id)
-                        println "DEBUG: EditDialog - Event to be returned from converter: ${updatedEvent}"
-                        return updatedEvent
-                    } catch (DateTimeParseException e) {
-                        Platform.runLater(() -> {
-                            Alert alert = new Alert(Alert.AlertType.ERROR)
-                            alert.title = "Invalid Time Format"
-                            alert.headerText = "Please enter time in HH:mm format (e.g., 09:00 or 15:30)."
-                            alert.contentText = e.getMessage()
-                            alert.showAndWait()
-                        })
-                        println "DEBUG: EditDialog - DateTimeParseException, returning null from converter"
-                        return null
-                    } catch (IllegalArgumentException e) {
-                         Platform.runLater(() -> {
-                            Alert alert = new Alert(Alert.AlertType.ERROR)
-                            alert.title = "Invalid Date/Time Logic"
-                            alert.headerText = e.getMessage()
-                            alert.showAndWait()
-                        })
-                        println "DEBUG: EditDialog - IllegalArgumentException, returning null from converter"
-                        return null
+                    if (endDateTime.isBefore(startDateTime)) {
+                        throw new IllegalArgumentException("End date/time must be after start date/time.")
                     }
-                }
-                println "DEBUG: EditDialog - Button was not saveButtonType, returning null from converter"
-                return null
-            })
-
-            println "DEBUG: EditDialog - About to call dialog.showAndWait()"
-            Optional<Event> result = dialog.showAndWait()
-            println "DEBUG: EditDialog - dialog.showAndWait() returned. Result present: ${result.isPresent()}"
-
-            result.ifPresent(updatedEventData -> {
-                println "DEBUG: EditDialog - Event result is present: ${updatedEventData}"
-                boolean success = calendarService.updateEvent(eventToEdit.id, updatedEventData)
-                if (success) {
-                    populateCalendarGrid()
-                    println "ChatWindow: Event updated via dialog: ${updatedEventData}"
-                } else {
+                    Event updatedEvent = new Event(titleField.getText(), startDateTime, endDateTime, descriptionArea.getText(), eventToEdit.id)
+                    println "DEBUG: EditDialog - Event to be returned from converter: ${updatedEvent}"
+                    return updatedEvent
+                } catch (DateTimeParseException e) {
                     Platform.runLater(() -> {
                         Alert alert = new Alert(Alert.AlertType.ERROR)
-                        alert.title = "Update Failed"
-                        alert.headerText = "Could not update the event (ID: ${eventToEdit.id}). It might have been deleted."
+                        alert.initOwner(dialog.dialogPane.scene.window)
+                        alert.title = "Invalid Time Format"
+                        alert.headerText = "Please enter time in HH:mm format (e.g., 09:00 or 15:30)."
+                        alert.contentText = e.getMessage()
                         alert.showAndWait()
                     })
+                    println "DEBUG: EditDialog - DateTimeParseException, returning null from converter"
+                    return null
+                } catch (IllegalArgumentException e) {
+                     Platform.runLater(() -> {
+                        Alert alert = new Alert(Alert.AlertType.ERROR)
+                        alert.initOwner(dialog.dialogPane.scene.window)
+                        alert.title = "Invalid Date/Time Logic"
+                        alert.headerText = e.getMessage()
+                        alert.showAndWait()
+                    })
+                    println "DEBUG: EditDialog - IllegalArgumentException, returning null from converter"
+                    return null
                 }
-            })
+            }
+            println "DEBUG: EditDialog - Button was not saveButtonType, returning null from converter"
+            return null
+        })
+
+        println "DEBUG: EditDialog - About to call dialog.showAndWait()"
+        Optional<Event> result = dialog.showAndWait()
+        println "DEBUG: EditDialog - dialog.showAndWait() returned. Result present: ${result.isPresent()}"
+
+        result.ifPresent(updatedEventData -> {
+            println "DEBUG: EditDialog - Event result is present: ${updatedEventData}"
+            boolean success = calendarService.updateEvent(eventToEdit.id, updatedEventData)
+            if (success) {
+                populateCalendarGrid()
+                updateTimelineForDate(updatedEventData.startTime.toLocalDate()) // Refresh timeline
+                println "ChatWindow: Event updated via dialog: ${updatedEventData}"
+            } else {
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.ERROR)
+                    alert.initOwner(primaryStage)
+                    alert.title = "Update Failed"
+                    alert.headerText = "Could not update the event (ID: ${eventToEdit.id}). It might have been deleted."
+                    alert.showAndWait()
+                })
+            }
+        })
+    }
+
+    private void updateTimelineForDate(LocalDate date) {
+        if (dailyTimelineView != null && date != null) {
+            List<Event> eventsForDay = calendarService.getEvents(date.atStartOfDay(), date.atTime(23, 59, 59))
+            dailyTimelineView.updateView(date, eventsForDay)
+            println "ChatWindow: Timeline updated for date: ${date} with ${eventsForDay.size()} events."
+        } else {
+            println "ChatWindow: Timeline or date is null, cannot update. Date: ${date}"
         }
+    }
 
     static void main(String[] args) {
         launch(args)

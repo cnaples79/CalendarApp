@@ -5,6 +5,7 @@ import javafx.scene.shape.Line
 import javafx.scene.shape.Rectangle
 import javafx.scene.text.Text
 import javafx.scene.paint.Color
+import javafx.util.Duration
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -119,6 +120,13 @@ class DailyTimelineView extends Pane {
                         event.description ?: "N/A"
                     )
                 )
+                tooltip.styleClass.add("timeline-event-tooltip")
+
+                // Add these lines for diagnostics:
+                tooltip.setShowDelay(javafx.util.Duration.millis(100)) // Show quickly
+                tooltip.setShowDuration(javafx.util.Duration.seconds(10)) // Stay for 10 seconds
+                tooltip.setHideDelay(javafx.util.Duration.millis(200)) // Hide quickly after mouse moves away
+
                 Tooltip.install(eventBar, tooltip)
                 Tooltip.install(eventTitle, tooltip)
 

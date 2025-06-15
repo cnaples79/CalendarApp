@@ -161,7 +161,7 @@ class ChatWindow extends Application {
 
         Scene scene = new Scene(root, 1500, 850) // Increased overall size for new layout
         try {
-            String cssPath = getClass().getResource("/com/aicalendar/ui/styles.css")?.toExternalForm()
+            String cssPath = getClass().getResource("ui/styles.css").toExternalForm()
             if (cssPath != null) {
                 scene.stylesheets.add(cssPath)
             } else {

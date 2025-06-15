@@ -76,3 +76,9 @@ gradle run
 - Comprehensive error handling and user feedback
 - Event validation and proper date/time formatting
 - Embedded ACTION command parsing from conversational AI responses
+
+
+
+
+
+Made with ❤️ from Charlotte.
